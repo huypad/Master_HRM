@@ -1,0 +1,584 @@
+//======================= CSS BUTTON =======================
+.ja_button {
+  font-family: "Roboto";
+  font-weight: 400;
+  font-size: 12px;
+  padding: 5px 20px;
+  border: 0.5px solid #d1d1d1;
+  border-radius: 3px;
+  margin: 20px;
+}
+
+.ja_btn-addnew,
+.ja_btn-addcontinue,
+.ja_btn-export,
+.ja_btn-import,
+.ja_btn-filter {
+  background-color: #3699ff !important;
+  color: #ffffff !important;
+
+  &:hover {
+    background-color: #0e72d8 !important;
+    color: #ffffff !important;
+  }
+}
+
+.ja_btn-addcontinue .mat-icon,
+.ja_btn-export .mat-icon,
+.ja_btn-filter .mat-icon,
+.btn-mic .mat-icon,
+.ja_btn-import .mat-icon {
+  font-size: 18px;
+  width: auto;
+  height: auto;
+  line-height: 1;
+  padding-right: 4px;
+  margin-right: 2px;
+  overflow: visible;
+  font-variation-settings: "opsz" 48;
+}
+
+.ja_btn-dropdown,
+.ja_btn-addclose {
+  background-color: #1bc5bd !important;
+  color: #ffffff !important;
+  margin-right: 12px !important;
+
+  &:hover {
+    background-color: #0bb7af !important;
+  }
+}
+
+.ja_btn-goback {
+  background-color: #ffffff;
+  color: #5f5f5f;
+  margin-right: 12px !important;
+
+  &:hover {
+    background-color: #e4e6ef;
+  }
+}
+
+.ja_btn_dangsudung {
+  background-color: #3699ff;
+  color: #ffffff;
+}
+
+.ja_btn_saphethan {
+  background-color: #1bc5bd;
+  color: #ffffff;
+}
+
+.ja_btn_dahethan {
+  background-color: #f64e60 !important;
+  color: #ffffff !important;
+}
+
+.ja_btn_tatca {
+  background-color: #16a850 !important;
+  color: #ffffff !important;
+}
+
+.ja_btn-export {
+  display: flex;
+  align-items: center;
+}
+
+.ja_btn-import {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  .spinner-inline {
+    display: inline-flex !important;
+    vertical-align: middle;
+  }
+
+  mat-icon {
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+.icon-repeat2 {
+  background: url("/src/assets/media/svg/icons/Clothes/Hat.svg") no-repeat top
+    left;
+  background-size: contain;
+  cursor: pointer;
+  display: inline-block;
+  height: 16px;
+  width: 16px;
+}
+
+.icon-repeat {
+  margin-top: 3.5px;
+  margin-right: 3.5px;
+  height: 16px;
+  width: 16px;
+}
+
+.color_more .mat-icon {
+  font-size: 25px !important;
+  width: 25px !important;
+  height: 25px !important;
+  line-height: 25px !important;
+}
+
+.mat-mdc-menu-item .mat-icon {
+  height: 18px !important;
+  width: 18px !important;
+}
+
+.cell-flex {
+  display: flex;
+  align-items: center; // canh icon và text cùng hàng ngang
+  gap: 4px; // khoảng cách giữa text và icon
+}
+
+.cell-flex mat-icon {
+  font-size: 18px; // thu nhỏ icon bằng chữ
+  width: 18px;
+  height: 18px;
+}
+
+//==================== CSS FOR POPUP ==========================
+.dialog-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: #16a850;
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    "Open Sans",
+    "Helvetica Neue",
+    sans-serif;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-bottom: 20px;
+  padding-right: 20px;
+}
+
+.color_more {
+  color: #3699ff !important;
+}
+
+.color_edit {
+  color: #1bc5bd !important;
+}
+
+.color_del {
+  color: rgb(255, 47, 47);
+}
+
+.color_info {
+  color: #808080;
+}
+
+//======================== CSS FOR CHECKBOX ==============================
+body .mat-mdc-checkbox {
+  font-family: "Roboto";
+  font-size: 12px;
+  padding: 0px;
+  border: 0.5px solid transparent;
+  border-radius: 5px;
+}
+
+.mat-mdc-checkbox.mat-accent
+  .mdc-checkbox__native-control:checked
+  ~ .mdc-checkbox__background,
+.mat-mdc-checkbox.mat-accent
+  .mdc-checkbox__native-control:indeterminate
+  ~ .mdc-checkbox__background {
+  background-color: #3699ff !important;
+  border-color: #3699ff !important;
+}
+
+/* Đảm bảo checkbox header cũng áp dụng màu xanh khi checked */
+th
+  .mat-mdc-checkbox.mat-accent.mat-mdc-checkbox-checked
+  .mdc-checkbox__background {
+  background-color: #3699ff !important;
+  border-color: #3699ff !important;
+}
+
+/* Đồng bộ màu tick và ripple cho header */
+th
+  .mat-mdc-checkbox.mat-accent.mat-mdc-checkbox-checked
+  .mdc-checkbox__checkmark {
+  color: white !important;
+  border-color: white !important;
+}
+
+th .mat-mdc-checkbox.mat-accent .mdc-checkbox__ripple {
+  background-color: rgba(54, 153, 255, 0.2) !important;
+}
+
+/* Ripple effect */
+.mat-mdc-checkbox.mat-accent .mdc-checkbox__ripple {
+  background-color: rgba(54, 153, 255, 0.2) !important;
+}
+
+.mat-accent {
+  --mat-pseudo-checkbox-full-selected-icon-color: #3699ff !important;
+  --mat-pseudo-checkbox-minimal-selected-checkmark-color: #3699ff !important;
+}
+
+::ng-deep .mat-mdc-checkbox .mdc-checkbox__native-control,
+::ng-deep .mat-mdc-checkbox .mat-mdc-checkbox-ripple {
+  width: 20px !important;
+  height: 20px !important;
+}
+
+::ng-deep .mat-mdc-checkbox .mat-mdc-checkbox-touch-target {
+  width: 28px !important;
+  height: 28px !important;
+}
+
+//==========================================================
+.icon-dynamic-search {
+  color: #808080;
+  padding: 10px 0 12px 12px;
+  text-align: center;
+}
+
+.avatar {
+  height: 40px;
+  width: 40px;
+  margin-right: 12px;
+  border-radius: 50%;
+}
+
+.col-stt {
+  width: 48px;
+}
+
+.col-avatar {
+  width: 250px;
+}
+
+//==================== CSS FOR TEXTBOX ==========================
+.ja_textbox {
+  font-family: "Roboto";
+  max-width: 300px;
+}
+
+//==================== CSS FOR OPTION ==========================
+.mat-mdc-form-field .mat-mdc-select-trigger {
+  font-size: 12px !important;
+}
+
+.mat-mdc-option {
+  font-size: 12px !important;
+}
+
+.mat-mdc-select-panel {
+  padding: 0px !important;
+}
+
+.mat-mdc-form-field-infix {
+  padding-top: 0px !important;
+}
+
+//====================CSS FOR DIALOG========================
+.fullscreen-mdc-dialog.cdk-overlay-pane {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  height: 100vh !important;
+  top: 0 !important;
+  left: 0 !important;
+}
+
+.fullscreen-mdc-dialog .mat-mdc-dialog-surface {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+
+.fullscreen-mdc-dialog .modal-content,
+.fullscreen-mdc-dialog .modal-body {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+// Bỏ box-shadow của modal-content khi fullscreen
+.fullscreen-mdc-dialog .modal-content {
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.date-fix {
+  width: 100%;
+  min-width: 0;
+  height: 57px !important;
+}
+
+.mat-mdc-icon-button {
+  width: 30px !important;
+  height: 30px !important;
+  padding: 0 !important;
+  margin-bottom: 0px;
+
+  svg {
+    font-size: 20px !important;
+    width: 20px !important;
+    height: 20px !important;
+    line-height: 20px !important;
+  }
+}
+
+.mat-mdc-form-field {
+  --mat-form-field-filled-container-color: white !important;
+  --mat-form-field-container-height: 48px;
+  --mat-form-field-filled-with-label-container-padding-top: 4px;
+  --mat-form-field-filled-with-label-container-padding-bottom: 4px;
+  --mat-form-field-focus-overlay-background: transparent !important;
+}
+
+.mat-mdc-form-field
+  .mat-mdc-text-field-wrapper.mdc-text-field.mdc-text-field--filled {
+  background-color: white !important;
+  box-shadow: none !important;
+}
+
+.mat-mdc-form-field-focus-overlay {
+  background-color: transparent !important;
+}
+
+.mdc-text-field--filled:not(.mdc-text-field--disabled)::before,
+.mdc-text-field--filled:not(.mdc-text-field--disabled):hover,
+.mdc-text-field--filled:not(.mdc-text-field--disabled):focus,
+.mdc-text-field--filled:not(.mdc-text-field--disabled):active {
+  background-color: transparent !important;
+}
+
+/* Điều chỉnh caret */
+.mat-mdc-form-field-infix {
+  padding-top: 4px !important;
+  padding-bottom: 0px !important;
+  min-height: 32px !important;
+  box-sizing: border-box;
+}
+
+.mat-mdc-input-element {
+  padding: 0 !important;
+  font-size: 14px !important;
+  height: 30px !important;
+  line-height: 24px !important;
+}
+
+.mat-mdc-floating-label {
+  color: #808080 !important;
+  font-family: "Roboto" !important;
+  font-size: 13px !important;
+  padding: 0 0 5px 0 !important;
+  transition: all 0.2s ease-in-out !important;
+}
+
+/* Khi focus hoặc có value → label nhảy lên */
+.mat-mdc-form-field.mat-form-field-should-float .mat-mdc-floating-label,
+.mat-mdc-form-field.mdc-text-field--focused .mat-mdc-floating-label {
+  top: 0 !important;
+  transform: translateY(-1.2em) scale(0.75) !important;
+  color: #1976d2 !important;
+}
+
+.mat-mdc-text-field-wrapper.mdc-text-field.mdc-text-field--filled {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.42) !important;
+}
+
+.mat-mdc-text-field-wrapper.mdc-text-field.mdc-text-field--filled.mdc-text-field--focused {
+  border-bottom: 2px solid #1976d2 !important;
+}
+
+/* Đã nhập */
+.mat-mdc-form-field {
+  .input-thuong {
+    color: #808080;
+    font-family: "Roboto";
+    font-size: 12px;
+    max-width: 300px;
+  }
+
+  .input-batbuoc {
+    color: #0e72d8;
+    font-family: "Roboto";
+    font-size: 12px !important;
+    max-width: 300px;
+  }
+
+  .mdc-line-ripple {
+    background-color: #808080;
+  }
+
+  .mat-mdc-required-marker {
+    color: #808080;
+  }
+}
+
+/* Đang nhập */
+.mat-mdc-form-field.mdc-text-field--focused {
+  .input-thuong {
+    color: #000000;
+  }
+
+  .input-batbuoc {
+    color: #0e72d8;
+  }
+
+  .mat-mdc-floating-label {
+    color: #3699ff;
+  }
+
+  .mdc-line-ripple {
+    background-color: #3699ff;
+  }
+
+  .mat-mdc-required-marker {
+    color: #3699ff;
+  }
+}
+
+/* Error */
+.mat-mdc-form-field.mat-form-field-invalid {
+  .mat-mdc-input-element {
+    color: #f64e60 !important;
+  }
+
+  .mat-mdc-floating-label {
+    color: #f64e60 !important;
+
+    .mat-mdc-required-marker {
+      color: #f64e60 !important;
+    }
+  }
+
+  .mdc-line-ripple {
+    background-color: #f64e60 !important;
+  }
+
+  .mat-mdc-text-field-wrapper.mdc-text-field.mdc-text-field--filled {
+    border-bottom: 2px solid #f64e60 !important;
+  }
+}
+
+/* Ẩn line ripple mặc định */
+.mat-mdc-form-field .mdc-line-ripple {
+  display: none !important;
+}
+
+.mat-mdc-form-field-subscript-wrapper .mat-mdc-form-field-bottom-align {
+  height: 0px !important;
+}
+
+//==========================================================
+.icon-calendar {
+  color: #808080;
+}
+
+.paginator-new {
+  padding-top: 7px;
+}
+
+body .kt-portlet .kt-portlet__body {
+  padding: 20px;
+}
+
+.kt-portlet__head--lg {
+  padding: 9px 0;
+}
+
+.status-new {
+  text-align: center;
+  color: #ffffff;
+}
+
+@keyframes spinnercustom {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner:before {
+  content: "";
+  box-sizing: border-box;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  margin-top: -10px;
+  margin-left: -10px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  border-top-color: #000000;
+  animation: spinnercustom 0.8s linear infinite;
+}
+
+.card.card-custom {
+  > .card-header {
+    min-height: 65px;
+
+    > .card-search {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      margin: auto;
+      margin-left: 0;
+    }
+  }
+
+  > .card-body {
+    padding: 0;
+
+    th {
+      height: 48px;
+      padding: 0 15px;
+      font-weight: 600;
+
+      color: #009557 !important;
+      background-color: #f3f6f9 !important;
+      letter-spacing: 0 !important;
+    }
+
+    td {
+      height: 48px;
+      padding: 0 15px;
+      border-bottom: #f2f3f8 1px solid;
+    }
+
+    tr:hover {
+      background-color: #f2f3f8;
+      cursor: pointer;
+    }
+  }
+}
+
+.modal-content .mdc-line-ripple {
+  background-color: #e6e4e4 !important;
+}
+
+.pl-16 {
+  padding-left: 16px !important;
+}
+
+.pl-10 {
+  padding-left: 10px !important;
+}
+
+.mat-mdc-dialog-container {
+  padding: 0 !important;
+}

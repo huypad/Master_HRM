@@ -1,0 +1,134 @@
+<div class="modal-content">
+  <div class="modal-header">
+    <div class="d-flex justify-content-start">
+      <div class="modal-title h4">
+        <span class="dialog-title">{{ getTitle() }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div
+    class="overlay overlay-block cursor-default modal-body overflow-auto"
+    style="min-height: 404px; max-height: 70vh"
+  >
+    <form class="form form-label-right" [formGroup]="formGroup">
+      <div class="row">
+        <!-- CỘT TRÁI -->
+        <div class="col-md-6">
+          <div class="form-group">
+            <mat-form-field appearance="fill" class="w-100">
+              <mat-label>Mã nhân viên</mat-label>
+              <input matInput formControlName="maNV" required />
+              <mat-error *ngIf="isControlInvalid('maNV', 'required')">
+                Bắt buộc
+              </mat-error>
+            </mat-form-field>
+          </div>
+
+          <div class="form-group">
+            <mat-form-field appearance="fill" class="w-100">
+              <mat-label>Họ lót</mat-label>
+              <input matInput formControlName="holot" required />
+              <mat-error *ngIf="isControlInvalid('holot', 'required')">
+                Bắt buộc
+              </mat-error>
+            </mat-form-field>
+          </div>
+
+          <div class="form-group">
+            <mat-form-field appearance="fill" class="w-100">
+              <mat-label>Tên</mat-label>
+              <input matInput formControlName="ten" required />
+              <mat-error *ngIf="isControlInvalid('ten', 'required')">
+                Bắt buộc
+              </mat-error>
+            </mat-form-field>
+          </div>
+
+          <div class="form-group">
+            <mat-form-field appearance="fill" class="w-100">
+              <mat-label>Ngày sinh</mat-label>
+              <input matInput type="date" formControlName="ngaySinh" />
+            </mat-form-field>
+          </div>
+        </div>
+
+        <!-- CỘT PHẢI -->
+        <div class="col-md-6">
+          <div class="form-group">
+            <mat-form-field appearance="fill" class="w-100">
+              <mat-label>Số CMND</mat-label>
+              <input matInput formControlName="cmnd" />
+            </mat-form-field>
+          </div>
+
+          <div class="form-group">
+            <mat-form-field appearance="fill" class="w-100">
+              <mat-label>Số điện thoại</mat-label>
+              <input matInput formControlName="mobile" />
+            </mat-form-field>
+          </div>
+
+          <div class="form-group">
+            <mat-form-field appearance="fill" class="w-100">
+              <mat-label>Email</mat-label>
+              <input matInput formControlName="email" />
+              <mat-error *ngIf="isControlInvalid('email', 'email')">
+                Email không hợp lệ
+              </mat-error>
+            </mat-form-field>
+          </div>
+          <div class="form-group">
+            <mat-form-field appearance="fill" class="w-100">
+              <mat-label>Số tài khoản</mat-label>
+              <input matInput formControlName="sotaikhoan" />
+            </mat-form-field>
+          </div>
+        </div>
+      </div>
+    </form>
+
+    <!-- FOOTER -->
+    <div class="modal-title" style="display: flex; justify-content: flex-end">
+      <!-- THÊM -->
+
+      <button mat-raised-button class="ja_btn-goback" (click)="goBack()">
+        Quay lại
+      </button>
+
+      <ng-container *ngIf="item.id_NV === 0">
+        <button
+          mat-raised-button
+          class="ja_btn-addcontinue mr-3"
+          [disabled]="isLoadingSubmit$ | async"
+          (click)="onSaveAndContinue()"
+        >
+          <mat-icon>cached</mat-icon>
+          Lưu và tiếp tục
+        </button>
+
+        <button
+          mat-raised-button
+          class="ja_btn-addclose"
+          [disabled]="isLoadingSubmit$ | async"
+          (click)="onSaveAndClose()"
+        >
+          Lưu và đóng
+        </button>
+      </ng-container>
+
+      <!-- SỬA -->
+      <ng-container *ngIf="item.id_NV !== 0">
+        <button
+          mat-raised-button
+          class="ja_btn-addcontinue"
+          [disabled]="isLoadingSubmit$ | async"
+          (click)="onSaveAndClose()"
+        >
+          <mat-icon>cached</mat-icon>
+          Lưu
+        </button>
+      </ng-container>
+    </div>
+  </div>
+</div>

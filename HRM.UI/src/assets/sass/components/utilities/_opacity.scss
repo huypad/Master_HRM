@@ -1,0 +1,36 @@
+//
+// Custom opacity helpers
+//
+@import '../variables.bootstrap';
+@import 'bootstrap/scss/mixins';
+
+@function breakpoint-infix($name, $breakpoints: $grid-breakpoints) {
+  @if $name != null and $name != map-first($breakpoints) {
+    @return "-#{$name}";
+  }
+
+  @return "";
+}
+
+// Responsive opacity
+@each $breakpoint in map-keys($grid-breakpoints) {
+  @include media-breakpoint-up($breakpoint) {
+    $infix: if($breakpoint == xs, "", "-#{$breakpoint}");
+
+    @for $opacity from 1 through 100 {
+      .opacity#{$infix}-#{$opacity} {
+        opacity: $opacity / 100 !important;
+      }
+
+      .hover-opacity#{$infix}-#{$opacity} {
+        transition: $transition;
+
+        &.active,
+        &:hover {
+          transition: $transition;
+          opacity: $opacity / 100 !important;
+        }
+      }
+    }
+  }
+}

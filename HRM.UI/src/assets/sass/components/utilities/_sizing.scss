@@ -1,0 +1,52 @@
+//
+// Width and height
+//
+@import '../variables.bootstrap';
+@import '../variables.custom';
+@import 'bootstrap/scss/mixins';
+
+// Auto
+.h-auto {
+    height: auto !important;
+}
+
+.w-auto {
+    width: auto !important;
+}
+
+// Responsive widths
+@each $breakpoint in map-keys($grid-breakpoints) {
+    @include media-breakpoint-up($breakpoint) {
+        $infix: if($breakpoint == xs, "", "-#{$breakpoint}");
+
+        @each $name, $value in $heights-and-widths {
+            // Height
+            .w#{$infix}-#{$name} {
+                width: $value !important;
+            }
+
+            // Width
+            .h#{$infix}-#{$name} {
+                height: $value !important;
+            }
+
+            // Min width
+            .min-w#{$infix}-#{$name} {
+                min-width: $value !important;
+            }
+
+            // Min height
+            .min-h#{$infix}-#{$name} {
+                min-height: $value !important;
+            }
+
+            .max-h#{$infix}-#{$name} {
+                max-height: $value !important;
+            }
+
+            .max-w#{$infix}-#{$name} {
+                max-width: $value !important;
+            }
+        }
+    }
+}

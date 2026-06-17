@@ -1,0 +1,19 @@
+// Functions
+@import "base/functions";
+
+// Mixins
+@import "base/mixins";
+@import "components/mixins";
+@import "vendors/plugins/mixins";
+
+// Bootstrap mixins
+@import "bootstrap/scss/mixins";
+
+// Global variables
+@import "components/variables.demo";
+
+// 3rd-Party plugins variables
+@import "vendors/plugins/variables";
+
+// Theme layout variables
+@import "layout/variables";

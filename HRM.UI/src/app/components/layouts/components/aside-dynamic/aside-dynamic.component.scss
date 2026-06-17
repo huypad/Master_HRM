@@ -1,0 +1,35 @@
+:host {
+  .aside {
+    height: 100%;
+
+    .aside-menu {
+      margin: 0;
+    }
+  }
+
+  // Giữ text viết hoa chữ cái đầu
+  .menu-text {
+    white-space: nowrap;
+    text-transform: capitalize !important;
+  }
+
+  // Icon của menu cấp 1 và submenu
+  .menu-link img.menu-icon,
+  .menu-link .svg-icon.menu-icon {
+    width: 20px !important;
+    height: 20px !important;
+    max-width: 20px !important;
+    max-height: 20px !important;
+    margin-right: 7px !important;
+    filter: brightness(0) saturate(100%) invert(100%) !important;
+    object-fit: contain; // giữ tỷ lệ nhưng không vượt quá
+  }
+
+  // Đảm bảo bullet trong submenu vẫn đúng kích thước
+  .menu-bullet-dot>span {
+    width: 6px;
+    height: 6px;
+    background-color: white;
+  }
+
+}

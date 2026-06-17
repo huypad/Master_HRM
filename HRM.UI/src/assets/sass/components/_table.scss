@@ -1,0 +1,235 @@
+@import '../components/variables.bootstrap';
+
+.table {
+  thead {
+
+    th,
+    td {
+      font-weight: $table-head-font-weight;
+      font-size: $table-head-font-size;
+      border-bottom-width: 1px;
+      padding-left: 16px;
+      padding-bottom: 12px;
+      color: #00C875 !important;
+    }
+  }
+
+
+  &.table-head-borderless {
+    thead {
+
+      th,
+      td {
+        border-top: 0;
+      }
+    }
+  }
+
+  &.table-head-solid {
+    thead {
+
+      th,
+      td {
+        background-color: $table-head-bg;
+      }
+    }
+  }
+
+  &.table-light {
+    @each $name, $color in $theme-colors {
+      &-#{$name} {
+        thead {
+          tr {
+            color: $color;
+            background-color: rgba($color, 0.1);
+          }
+        }
+      }
+    }
+  }
+
+  &.table-head-custom {
+    thead {
+
+      tr,
+      th {
+        height: 48px;
+        font-weight: $table-compact-head-font-weight;
+        color: #808080 !important;
+        font-size: 13px;
+        padding: 0px 15px !important;
+        text-transform: capitalize;
+        letter-spacing: $table-compact-head-letter-spacing;
+        background-color: #e4e6ef !important;
+      }
+    }
+
+    thead tr th:first-child,
+    tbody tr td:first-child {
+      text-align: center;
+    }
+
+    td.mat-column-thaotac {
+      display: flex !important;
+      justify-content: center !important;
+      align-items: center !important;
+      gap: 15px !important;
+      padding-top: 10px !important;
+      border-bottom: none !important;
+    }
+
+    th.mat-column-thaotac {
+      text-align: center !important;
+    }
+
+
+    td.mat-mdc-cell {
+      font-size: 12px;
+      color: #000000;
+
+      .jee-avatar {
+        padding-left: 12px;
+        padding-top: 4px;
+        padding-bottom: 4px;
+      }
+
+      .jee-name {
+        color: #000;
+        padding-left: 30px;
+        padding-top: 12px;
+        font-size: 12px;
+      }
+
+      .row {
+        padding-left: 16px !important;
+      }
+    }
+  }
+
+  &.table-foot-custom {
+    tfoot {
+
+      th,
+      td {
+        font-weight: $table-compact-head-font-weight;
+        color: $table-compact-head-color !important;
+        font-size: $table-compact-head-font-size;
+        text-transform: $table-compact-head-text-transform;
+        letter-spacing: $table-compact-head-letter-spacing;
+      }
+    }
+  }
+
+  &.table-head-bg {
+    thead {
+
+      tr,
+      th {
+        background-color: $table-head-bg;
+        border-bottom: 0;
+        letter-spacing: 1px;
+
+        &:first-child {
+          border-top-left-radius: $border-radius;
+          border-bottom-left-radius: $border-radius;
+        }
+
+        &:last-child {
+          border-top-right-radius: $border-radius;
+          border-bottom-right-radius: $border-radius;
+        }
+      }
+    }
+  }
+
+  &.table-foot-bg {
+    tfoot {
+
+      th,
+      td {
+        border-bottom: 0;
+        background-color: $gray-100;
+
+        &:first-child {
+          border-top-left-radius: $border-radius;
+          border-bottom-left-radius: $border-radius;
+        }
+
+        &:last-child {
+          border-top-right-radius: $border-radius;
+          border-bottom-right-radius: $border-radius;
+        }
+      }
+    }
+  }
+
+  &.table-separate {
+
+    th,
+    td {
+      border-top: 0;
+      border-bottom: 1px solid $table-border-color;
+
+      &:first-child {
+        padding-left: 0 !important;
+      }
+
+      &:last-child {
+        padding-right: 0 !important;
+      }
+    }
+
+    tfoot {
+
+      th,
+      td {
+        border-bottom: 0;
+        border-top: 1px solid $table-border-color;
+      }
+    }
+
+    tbody {
+      tr:last-child {
+        td {
+          border-bottom: 0;
+        }
+      }
+    }
+  }
+
+  &.table-bordered {
+    tfoot {
+
+      th,
+      td {
+        border-bottom: 0;
+      }
+    }
+  }
+
+  &.table-vertical-center {
+
+    th,
+    td {
+      vertical-align: middle;
+    }
+  }
+}
+
+.table:not(.table-bordered) {
+  thead {
+
+    th,
+    td {
+      border-top: 0;
+    }
+  }
+}
+
+.text-hover-underline:hover {
+  text-decoration: underline;
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}

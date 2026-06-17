@@ -1,0 +1,51 @@
+<!--begin::Brand-->
+<div class="brand flex-column-auto" id="kt_brand" [ngClass]="brandClasses">
+  <a routerLink="/" class="brand-logo">
+    <img alt="Logo" style="width: 100px" [attr.src]="headerLogo" />
+  </a>
+
+  <ng-container *ngIf="asideSelfMinimizeToggle">
+    <button class="brand-toggle btn btn-sm px-0" id="kt_aside_toggle">
+      <img
+        src="./assets/media/svg/icons/Navigation/Angle-double-left.svg"
+        style="
+          width: 20px;
+          height: 20px;
+          filter: brightness(0) saturate(100%) invert(100%);
+        "
+      />
+    </button>
+  </ng-container>
+</div>
+
+<!--begin::Aside Menu-->
+<div class="aside-menu-wrapper flex-column-fluid" id="kt_aside_menu_wrapper">
+  <div
+    id="kt_aside_menu"
+    class="aside-menu"
+    [ngClass]="asideMenuCSSClasses"
+    data-menu-vertical="1"
+  >
+    <ul class="menu-nav">
+      <!-- MENU DUY NHẤT -->
+      <li
+        class="menu-item"
+        routerLinkActive="menu-item-active"
+        [routerLinkActiveOptions]="{ exact: true }"
+      >
+        <a class="menu-link" routerLink="/account">
+          <img
+            src="./assets/media/svg/icons/General/User.svg"
+            style="
+              width: 20px;
+              height: 20px;
+              margin-right: 8px;
+              filter: brightness(0) saturate(100%) invert(100%);
+            "
+          />
+          <span class="menu-text">Danh sách nhân viên</span>
+        </a>
+      </li>
+    </ul>
+  </div>
+</div>

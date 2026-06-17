@@ -1,0 +1,101 @@
+////////////////////////////////////////////////////////////////
+/////////////       MAIN METRONIC STYLE FILE       /////////////
+/////////////     ✅ Legacy SCSS Compatible ✅       /////////////
+////////////////////////////////////////////////////////////////
+
+// 0: Base Core Functions, Mixins & Variables
+@import 'base/functions';
+@import 'base/mixins';
+@import 'bootstrap/scss/functions';
+@import 'bootstrap/scss/variables';
+@import 'bootstrap/scss/mixins';
+
+// Bootstrap & Angular Material
+@import '../sass/components/mixins';
+@import '../sass/vendors/plugins/mixins';
+@import 'vendors/angular/material/angular-material';
+@import 'vendors/angular/material/include';
+
+// 1: Biến chung
+@import 'components/variables.demo';
+@import 'vendors/plugins/variables';
+@import 'layout/variables';
+
+// 2: Khởi tạo layout
+@import 'init';
+
+// 3: Bootstrap framework
+@import 'bootstrap/scss/bootstrap';
+
+// 4: Components
+@import 'components/utilities';
+@import 'components/burger-icon';
+@import 'components/card';
+@import 'components/wizard';
+@import 'components/type';
+@import 'components/breadcrumb';
+@import 'components/nav';
+@import 'components/alert';
+@import 'components/buttons';
+@import 'components/code';
+@import 'components/dropdown';
+@import 'components/forms';
+@import 'components/grid';
+@import 'components/modal';
+@import 'components/progress';
+@import 'components/table';
+@import 'components/popover';
+@import 'components/tooltip';
+@import 'components/accordion';
+@import 'components/datatable';
+@import 'components/checkbox';
+@import 'components/radio';
+@import 'components/switch';
+@import 'components/option';
+@import 'components/dialog';
+@import 'components/strikethrough';
+@import 'components/separator';
+@import 'components/image-input';
+@import 'components/label';
+@import 'components/loader';
+@import 'components/symbol';
+@import 'components/pulse';
+@import 'components/page-loader';
+@import 'components/quick-search';
+@import 'components/scrolltop';
+@import 'components/spinner';
+@import 'components/sticky-toolbar';
+@import 'components/svg-icon';
+@import 'components/svg';
+@import 'components/timeline';
+@import 'components/timeline-2';
+@import 'components/timeline-3';
+@import 'components/timeline-4';
+@import 'components/timeline-5';
+@import 'components/timeline-6';
+@import 'components/overlay';
+@import 'components/wave';
+@import 'components/list';
+@import 'components/bullet';
+@import 'components/navi';
+@import 'components/ribbon';
+@import 'components/offcanvas';
+@import 'components/toggle';
+
+// 5: Plugins
+@import 'vendors/plugins/formvalidation';
+@import 'vendors/plugins/dropzone';
+@import 'vendors/plugins/perfect-scrollbar';
+@import 'vendors/plugins/prismjs';
+@import 'vendors/plugins/apexcharts';
+
+// 6: Layout
+@import 'layout/init';
+
+////////////////////////////////////////////////////////////////
+/////////////     OVERRIDE HOẶC CUSTOM CSS TẠI ĐÂY     //////////
+////////////////////////////////////////////////////////////////
+
+.no-padding .mat-dialog-container {
+  padding: 0 !important;
+}

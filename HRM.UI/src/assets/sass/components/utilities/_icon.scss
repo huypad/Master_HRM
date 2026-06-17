@@ -1,0 +1,26 @@
+//
+// Icon
+//
+@import '../variables.custom';
+@import '../variables.bootstrap';
+@import 'bootstrap/scss/mixins';
+@import '../../base/functions/get';
+
+// Default icon 
+i {
+    font-size: get($icon-sizes, md);
+    color: $text-muted;
+}
+
+// Responsive icon sizes
+@each $breakpoint in map-keys($grid-breakpoints) {
+    @include media-breakpoint-up($breakpoint) {
+        $infix: if($breakpoint == xs, "", "-#{$breakpoint}");
+
+        @each $name, $value in $icon-sizes {
+            .icon#{$infix}-#{$name} {
+                font-size: $value !important;
+            }
+        }
+    }
+}

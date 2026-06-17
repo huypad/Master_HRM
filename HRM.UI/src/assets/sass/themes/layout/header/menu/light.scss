@@ -1,0 +1,18 @@
+//
+// Header menu light theme
+//
+
+// Initialization of global variables, mixins and functions
+@import "../../../../init";
+@import "../../../../components/mixins/menu-horizontal";
+@import "../../../../components/mixins/menu-vertical";
+@import "../../../../layout/variables";
+@import "../../../../base/functions/get";
+
+
+
+// Build Desktop Header Menu Theme
+@include menu-hor-build-theme(get($header-menu-config, desktop), light);
+
+// Build Mobile Header Menu Theme
+@include menu-ver-build-theme(get($header-menu-config, tablet-and-mobile), light);

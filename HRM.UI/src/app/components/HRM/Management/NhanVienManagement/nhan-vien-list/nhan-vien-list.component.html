@@ -1,0 +1,185 @@
+<div class="card card-custom gutter-b">
+  <!-- header -->
+  <div class="card-header">
+    <div class="card-title">
+      <span class="card-label">Danh sách nhân viên</span>
+    </div>
+    <div class="card-toolbar">
+      <button
+        mat-raised-button
+        [ngClass]="
+          accessMode === 'public'
+            ? 'ja_btn_tatca mr-2'
+            : 'btn btn-outline-primary mr-2'
+        "
+        (click)="changeAccessMode('public')"
+      >
+        Test Public
+      </button>
+
+      <button
+        mat-raised-button
+        [ngClass]="
+          accessMode === 'private'
+            ? 'ja_btn_tatca mr-2'
+            : 'btn btn-outline-primary mr-2'
+        "
+        (click)="changeAccessMode('private')"
+      >
+        Test Private
+      </button>
+
+      <button *ngIf="accessMode === 'private'" mat-raised-button class="ja_btn-addnew" (click)="create()">
+        Thêm nhân viên
+      </button>
+    </div>
+  </div>
+
+  <!-- body -->
+  <div class="card-body">
+    <!-- begin: Filtration form -->
+    <div class="form form-label-right ml-4">
+      <div class="form-group row">
+        <div class="col-lg-4 ml-2">
+          <small class="form-text text-muted"><b>Tìm kiếm</b></small>
+          <input
+            type="text"
+            class="form-control"
+            placeholder="Tìm họ tên gần đúng, hoặc nhập CMND đầy đủ"
+            (keyup.enter)="onSearch(searchInput.value)"
+            #searchInput
+          />
+        </div>
+      </div>
+    </div>
+    <!-- end: Filtration form -->
+
+    <!-- table -->
+    <div
+      class="table-responsive angular-bootstrap-table"
+      [ngStyle]="{ height: getHeight() }"
+    >
+      <table
+        mat-table
+        class="table table-head-custom table-vertical-center overflow-hidden"
+        [dataSource]="dataSource"
+        [class.loading]="isLoading"
+      >
+        <!-- STT -->
+        <ng-container matColumnDef="stt">
+          <th *matHeaderCellDef>
+            <span>STT</span>
+          </th>
+          <td mat-cell *matCellDef="let r; let i = index">
+            <span>
+              {{ (paginator.page - 1) * paginator.pageSize + i + 1 }}
+            </span>
+          </td>
+        </ng-container>
+
+        <!-- Mã NV -->
+        <ng-container matColumnDef="maNV">
+          <th *matHeaderCellDef>
+            <span>Mã NV</span>
+          </th>
+          <td mat-cell *matCellDef="let r">
+            <span>{{ r.maNV }}</span>
+          </td>
+        </ng-container>
+
+        <!-- Họ tên -->
+        <ng-container matColumnDef="hoTen">
+          <th *matHeaderCellDef>
+            <span>Họ tên</span>
+          </th>
+          <td mat-cell *matCellDef="let r">
+            <span>{{ r.hoTen || "****" }}</span>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="ngaySinh">
+          <th mat-header-cell *matHeaderCellDef>
+            <span>Ngày sinh</span>
+            <app-sort-icon
+              column="ngaySinh"
+              [activeColumn]="sorting.column"
+              [activeDirection]="sorting.direction"
+              (sort)="sort($event)"
+            ></app-sort-icon>
+          </th>
+          <td mat-cell *matCellDef="let r">
+            <span>
+              {{ r.ngaySinh ? (r.ngaySinh | date: "dd/MM/yyyy") : "" }}
+            </span>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="cmnd">
+          <th mat-header-cell *matHeaderCellDef>
+            <span>CMND</span>
+          </th>
+          <td mat-cell *matCellDef="let r">
+            <span>{{ r.cmnd || "****" }}</span>
+          </td>
+        </ng-container>
+
+        <!-- Điện thoại -->
+        <ng-container matColumnDef="mobile">
+          <th *matHeaderCellDef>
+            <span>Điện thoại</span>
+          </th>
+          <td mat-cell *matCellDef="let r">
+            <span>{{ r.mobile }}</span>
+          </td>
+        </ng-container>
+
+        <!-- Email -->
+        <ng-container matColumnDef="email">
+          <th *matHeaderCellDef>
+            <span>Email</span>
+          </th>
+          <td mat-cell *matCellDef="let r">
+            <span>{{ r.email }}</span>
+          </td>
+        </ng-container>
+
+        <!-- Thao tác -->
+        <ng-container matColumnDef="thaotac">
+          <th *matHeaderCellDef style="text-align: center">
+            <span>Thao tác</span>
+          </th>
+          <td mat-cell *matCellDef="let r" style="text-align: center">
+            <button mat-icon-button matTooltip="Sửa" (click)="update(r)">
+              <mat-icon color="primary">mode_edit</mat-icon>
+            </button>
+            <button mat-icon-button matTooltip="Xóa" (click)="delete(r)">
+              <mat-icon color="warn">delete</mat-icon>
+            </button>
+          </td>
+        </ng-container>
+
+        <!-- rows -->
+        <tr
+          mat-header-row
+          *matHeaderRowDef="displayedColumns; sticky: true"
+        ></tr>
+        <tr
+          mat-row
+          *matRowDef="let row; columns: displayedColumns"
+          (click)="row.highlighted = !row.highlighted"
+          [ngClass]="{ hovered: row.hovered, highlighted: row.highlighted }"
+          (mouseover)="row.hovered = true"
+          (mouseout)="row.hovered = false"
+        ></tr>
+      </table>
+    </div>
+    <!-- end: Table -->
+
+    <app-paginator
+      [paginator]="paginator"
+      [isLoading]="isLoading"
+      (paginate)="paginate($event)"
+    >
+    </app-paginator>
+  </div>
+</div>

@@ -1,0 +1,147 @@
+{
+  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "newProjectRoot": "projects",
+  "projects": {
+    "HRM.UI": {
+      "projectType": "application",
+      "schematics": {},
+      "root": "",
+      "sourceRoot": "src",
+      "prefix": "app",
+      "architect": {
+        "build": {
+          "builder": "@angular-devkit/build-angular:browser",
+          "options": {
+            "outputPath": "dist/hrm-ui",
+            "index": "src/index.html",
+            "main": "src/main.ts",
+            "polyfills": [
+              "zone.js"
+            ],
+            "tsConfig": "tsconfig.app.json",
+            "assets": [
+              {
+                "glob": "**/*",
+                "input": "public"
+              },
+              {
+                "glob": "**/*",
+                "input": "src/assets",
+                "output": "/assets"
+              }
+            ],
+            "styles": [
+              "src/styles.scss"
+            ],
+            "scripts": [
+              "node_modules/perfect-scrollbar/dist/perfect-scrollbar.min.js",
+              "src/assets/js/components/util.js",
+              "src/assets/js/components/offcanvas.js",
+              "src/assets/js/components/menu.js",
+              "src/assets/js/components/header.js",
+              "src/assets/js/components/image-input.js",
+              "src/assets/js/components/dialog.js",
+              "src/assets/js/components/cookie.js",
+              "src/assets/js/components/card.js",
+              "src/assets/js/components/toggle.js",
+              "src/assets/js/layout/base/content.js",
+              "src/assets/js/layout/base/header.js",
+              "src/assets/js/layout/base/header-menu.js",
+              "src/assets/js/layout/base/header-topbar.js",
+              "src/assets/js/layout/base/footer.js",
+              "src/assets/js/layout/base/subheader.js",
+              "src/assets/js/layout/base/brand.js",
+              "src/assets/js/layout/base/aside-menu.js",
+              "src/assets/js/layout/base/aside-toggle.js",
+              "src/assets/js/layout/base/aside.js",
+              "src/assets/js/layout/base/sticky-card.js",
+              "src/assets/js/layout/base/stretched-card.js",
+              "src/assets/js/layout/extended/quick-search.js",
+              "src/assets/js/layout/extended/quick-notifications.js",
+              "src/assets/js/layout/extended/quick-actions.js",
+              "src/assets/js/layout/extended/quick-cart.js",
+              "src/assets/js/layout/extended/quick-panel.js",
+              "src/assets/js/layout/extended/quick-user.js",
+              "src/assets/js/components/scrolltop.js",
+              "src/assets/js/layout/extended/scrolltop.js"
+            ]
+          },
+          "configurations": {
+            "production": {
+              "fileReplacements": [
+                {
+                  "replace": "src/app/environments/environment.ts",
+                  "with": "src/app/environments/environment.prod.ts"
+                }
+              ],
+              "budgets": [
+                {
+                  "type": "initial",
+                  "maximumWarning": "4mb",
+                  "maximumError": "5mb"
+                },
+                {
+                  "type": "anyComponentStyle",
+                  "maximumWarning": "6kb",
+                  "maximumError": "10kb"
+                }
+              ],
+              "outputHashing": "all"
+            },
+            "development": {
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": true
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "serve": {
+          "builder": "@angular-devkit/build-angular:dev-server",  
+          "options": {},
+          "configurations": {
+            "production": {
+              "buildTarget": "HRM.UI:build:production"
+            },
+            "development": {
+              "buildTarget": "HRM.UI:build:development"
+            }
+          },
+          "defaultConfiguration": "development"
+        },
+        "extract-i18n": {
+          "builder": "@angular/build:extract-i18n"
+        },
+        "test": {
+          "builder": "@angular/build:karma",
+          "options": {
+            "polyfills": [
+              "zone.js",
+              "zone.js/testing"
+            ],
+            "tsConfig": "tsconfig.spec.json",
+            "assets": [
+              {
+                "glob": "**/*",
+                "input": "src/assets",
+                "output": "/assets"
+              },
+              {
+                "glob": "**/*",
+                "input": "public"
+              }
+            ],
+            "styles": [
+              "src/styles.scss"
+            ],
+            "scripts": []
+          }
+        }
+      }
+    }
+  },
+  "cli": {
+    "analytics": "5d87c036-7624-4d13-8bb7-8be22169d542"
+  }
+}
