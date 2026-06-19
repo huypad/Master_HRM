@@ -1,4 +1,4 @@
-﻿using HRM.Data;
+using HRM.Data;
 using HRM.DTOs;
 using HRM.Entities;
 using Microsoft.Data.SqlClient;
@@ -6,16 +6,19 @@ using Microsoft.EntityFrameworkCore;
 using System.Data;
 using HRM.Common;
 using HRM.Helpers.Security;
+using HRM.Services;
 
 namespace HRM.Repositories
 {
     public class NhanVienRepository : INhanVienRepository
     {
         private readonly HrmDbContext _context;
+        private readonly ISecurityService _securityService;
 
-        public NhanVienRepository(HrmDbContext context)
+        public NhanVienRepository(HrmDbContext context, ISecurityService securityService)
         {
             _context = context;
+            _securityService = securityService;
         }
 
         public static class SortDirectionConst
@@ -308,22 +311,22 @@ namespace HRM.Repositories
 
             cmd.Parameters.Add(new SqlParameter("@I_Holot", SqlDbType.VarBinary)
             {
-                Value = (object?)EncryptionHelper.EncryptString(entity.Holot) ?? DBNull.Value
+                Value = string.IsNullOrWhiteSpace(entity.Holot) ? DBNull.Value : (object)Convert.FromBase64String(_securityService.EncryptData(entity.Holot))
             });
 
             cmd.Parameters.Add(new SqlParameter("@I_Ten", SqlDbType.VarBinary)
             {
-                Value = (object?)EncryptionHelper.EncryptString(entity.Ten) ?? DBNull.Value
+                Value = string.IsNullOrWhiteSpace(entity.Ten) ? DBNull.Value : (object)Convert.FromBase64String(_securityService.EncryptData(entity.Ten))
             });
 
             cmd.Parameters.Add(new SqlParameter("@I_CMND", SqlDbType.VarBinary, 512)
             {
-                Value = (object?)EncryptionHelper.EncryptString(entity.CMND) ?? DBNull.Value
+                Value = string.IsNullOrWhiteSpace(entity.CMND) ? DBNull.Value : (object)Convert.FromBase64String(_securityService.EncryptData(entity.CMND))
             });
 
             var cmndHash = string.IsNullOrWhiteSpace(entity.CMND)
                 ? (object)DBNull.Value
-                : SecurityIndexHelper.ComputeHashWithSalt(entity.CMND);
+                : Convert.FromBase64String(_securityService.GenerateSearchIndex(entity.CMND, "CMND"));
 
             cmd.Parameters.Add(new SqlParameter("@CMNDHash", SqlDbType.VarBinary, 32)
             {
@@ -347,12 +350,12 @@ namespace HRM.Repositories
 
             cmd.Parameters.Add(new SqlParameter("@I_Sotaikhoan", SqlDbType.VarBinary, 512)
             {
-                Value = (object?)EncryptionHelper.EncryptString(entity.Sotaikhoan) ?? DBNull.Value
+                Value = string.IsNullOrWhiteSpace(entity.Sotaikhoan) ? DBNull.Value : (object)Convert.FromBase64String(_securityService.EncryptData(entity.Sotaikhoan))
             });
 
             var sotaikhoanHash = string.IsNullOrWhiteSpace(entity.Sotaikhoan)
                 ? (object)DBNull.Value
-                : SecurityIndexHelper.ComputeHashWithSalt(entity.Sotaikhoan);
+                : Convert.FromBase64String(_securityService.GenerateSearchIndex(entity.Sotaikhoan, "Sotaikhoan"));
 
             cmd.Parameters.Add(new SqlParameter("@SotaikhoanHash", SqlDbType.VarBinary, 32)
             {
@@ -408,22 +411,22 @@ namespace HRM.Repositories
 
             cmd.Parameters.Add(new SqlParameter("@I_Holot", SqlDbType.VarBinary)
             {
-                Value = (object?)EncryptionHelper.EncryptString(entity.Holot) ?? DBNull.Value
+                Value = string.IsNullOrWhiteSpace(entity.Holot) ? DBNull.Value : (object)Convert.FromBase64String(_securityService.EncryptData(entity.Holot))
             });
 
             cmd.Parameters.Add(new SqlParameter("@I_Ten", SqlDbType.VarBinary)
             {
-                Value = (object?)EncryptionHelper.EncryptString(entity.Ten) ?? DBNull.Value
+                Value = string.IsNullOrWhiteSpace(entity.Ten) ? DBNull.Value : (object)Convert.FromBase64String(_securityService.EncryptData(entity.Ten))
             });
 
             cmd.Parameters.Add(new SqlParameter("@I_CMND", SqlDbType.VarBinary, 512)
             {
-                Value = (object?)EncryptionHelper.EncryptString(entity.CMND) ?? DBNull.Value
+                Value = string.IsNullOrWhiteSpace(entity.CMND) ? DBNull.Value : (object)Convert.FromBase64String(_securityService.EncryptData(entity.CMND))
             });
 
             var cmndHash = string.IsNullOrWhiteSpace(entity.CMND)
                 ? (object)DBNull.Value
-                : SecurityIndexHelper.ComputeHashWithSalt(entity.CMND);
+                : Convert.FromBase64String(_securityService.GenerateSearchIndex(entity.CMND, "CMND"));
 
             cmd.Parameters.Add(new SqlParameter("@CMNDHash", SqlDbType.VarBinary, 32)
             {
@@ -447,12 +450,12 @@ namespace HRM.Repositories
 
             cmd.Parameters.Add(new SqlParameter("@I_Sotaikhoan", SqlDbType.VarBinary, 512)
             {
-                Value = (object?)EncryptionHelper.EncryptString(entity.Sotaikhoan) ?? DBNull.Value
+                Value = string.IsNullOrWhiteSpace(entity.Sotaikhoan) ? DBNull.Value : (object)Convert.FromBase64String(_securityService.EncryptData(entity.Sotaikhoan))
             });
 
             var sotaikhoanHash = string.IsNullOrWhiteSpace(entity.Sotaikhoan)
                 ? (object)DBNull.Value
-                : SecurityIndexHelper.ComputeHashWithSalt(entity.Sotaikhoan);
+                : Convert.FromBase64String(_securityService.GenerateSearchIndex(entity.Sotaikhoan, "Sotaikhoan"));
 
             cmd.Parameters.Add(new SqlParameter("@SotaikhoanHash", SqlDbType.VarBinary, 32)
             {
@@ -530,9 +533,15 @@ namespace HRM.Repositories
 
                 try
                 {
-                    var holot = EncryptionHelper.DecryptString(reader["I_Holot"]);
-                    var ten = EncryptionHelper.DecryptString(reader["I_Ten"]);
-                    var cmnd = EncryptionHelper.DecryptString(reader["I_CMND"]);
+                    var holot = reader["I_Holot"] == DBNull.Value || reader["I_Holot"] == null
+                        ? string.Empty
+                        : _securityService.DecryptData(Convert.ToBase64String((byte[])reader["I_Holot"]));
+                    var ten = reader["I_Ten"] == DBNull.Value || reader["I_Ten"] == null
+                        ? string.Empty
+                        : _securityService.DecryptData(Convert.ToBase64String((byte[])reader["I_Ten"]));
+                    var cmnd = reader["I_CMND"] == DBNull.Value || reader["I_CMND"] == null
+                        ? string.Empty
+                        : _securityService.DecryptData(Convert.ToBase64String((byte[])reader["I_CMND"]));
 
                     result.Add(new NhanVienDTO
                     {
@@ -586,9 +595,15 @@ namespace HRM.Repositories
 
                 try
                 {
-                    var holot = EncryptionHelper.DecryptString(reader["I_Holot"]);
-                    var ten = EncryptionHelper.DecryptString(reader["I_Ten"]);
-                    var cmnd = EncryptionHelper.DecryptString(reader["I_CMND"]);
+                    var holot = reader["I_Holot"] == DBNull.Value || reader["I_Holot"] == null
+                        ? string.Empty
+                        : _securityService.DecryptData(Convert.ToBase64String((byte[])reader["I_Holot"]));
+                    var ten = reader["I_Ten"] == DBNull.Value || reader["I_Ten"] == null
+                        ? string.Empty
+                        : _securityService.DecryptData(Convert.ToBase64String((byte[])reader["I_Ten"]));
+                    var cmnd = reader["I_CMND"] == DBNull.Value || reader["I_CMND"] == null
+                        ? string.Empty
+                        : _securityService.DecryptData(Convert.ToBase64String((byte[])reader["I_CMND"]));
 
                     result.Add(new NhanVienDTO
                     {
@@ -618,7 +633,7 @@ namespace HRM.Repositories
         private async Task<List<decimal>> FindIdsByCMNDHashAsync(string cmnd)
         {
             var result = new List<decimal>();
-            var hash = SecurityIndexHelper.ComputeHashWithSalt(cmnd);
+            var hash = Convert.FromBase64String(_securityService.GenerateSearchIndex(cmnd, "CMND"));
 
             var conn = _context.Database.GetDbConnection();
             if (conn.State != ConnectionState.Open)
@@ -931,22 +946,22 @@ namespace HRM.Repositories
 
                 cmd.Parameters.Add(new SqlParameter("@I_Holot", SqlDbType.VarBinary)
                 {
-                    Value = (object?)EncryptionHelper.EncryptString(row.Holot) ?? DBNull.Value
+                    Value = string.IsNullOrWhiteSpace(row.Holot) ? DBNull.Value : (object)Convert.FromBase64String(_securityService.EncryptData(row.Holot))
                 });
 
                 cmd.Parameters.Add(new SqlParameter("@I_Ten", SqlDbType.VarBinary)
                 {
-                    Value = (object?)EncryptionHelper.EncryptString(row.Ten) ?? DBNull.Value
+                    Value = string.IsNullOrWhiteSpace(row.Ten) ? DBNull.Value : (object)Convert.FromBase64String(_securityService.EncryptData(row.Ten))
                 });
 
                 cmd.Parameters.Add(new SqlParameter("@I_CMND", SqlDbType.VarBinary, 512)
                 {
-                    Value = (object?)EncryptionHelper.EncryptString(row.CMND) ?? DBNull.Value
+                    Value = string.IsNullOrWhiteSpace(row.CMND) ? DBNull.Value : (object)Convert.FromBase64String(_securityService.EncryptData(row.CMND))
                 });
 
                 var cmndHash = string.IsNullOrWhiteSpace(row.CMND)
                     ? (object)DBNull.Value
-                    : SecurityIndexHelper.ComputeHashWithSalt(row.CMND);
+                    : Convert.FromBase64String(_securityService.GenerateSearchIndex(row.CMND, "CMND"));
 
                 cmd.Parameters.Add(new SqlParameter("@CMNDHash", SqlDbType.VarBinary, 32)
                 {
@@ -955,12 +970,12 @@ namespace HRM.Repositories
 
                 cmd.Parameters.Add(new SqlParameter("@I_Sotaikhoan", SqlDbType.VarBinary, 512)
                 {
-                    Value = (object?)EncryptionHelper.EncryptString(row.Sotaikhoan) ?? DBNull.Value
+                    Value = string.IsNullOrWhiteSpace(row.Sotaikhoan) ? DBNull.Value : (object)Convert.FromBase64String(_securityService.EncryptData(row.Sotaikhoan))
                 });
 
                 var sotaikhoanHash = string.IsNullOrWhiteSpace(row.Sotaikhoan)
                     ? (object)DBNull.Value
-                    : SecurityIndexHelper.ComputeHashWithSalt(row.Sotaikhoan);
+                    : Convert.FromBase64String(_securityService.GenerateSearchIndex(row.Sotaikhoan, "Sotaikhoan"));
 
                 cmd.Parameters.Add(new SqlParameter("@SotaikhoanHash", SqlDbType.VarBinary, 32)
                 {
