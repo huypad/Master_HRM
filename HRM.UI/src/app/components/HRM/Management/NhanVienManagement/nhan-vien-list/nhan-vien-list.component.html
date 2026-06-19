@@ -37,6 +37,41 @@
 
   <!-- body -->
   <div class="card-body">
+    <!--Khung mô tả trạng thái màn hình -->
+    <div
+      class="alert mb-5"
+      [ngClass]="accessMode === 'public' ? 'alert-warning' : 'alert-success'"
+    >
+      <div class="d-flex align-items-center justify-content-between">
+        <div>
+          <h5 class="mb-2">
+            {{
+              accessMode === 'public'
+                ? 'Admin View - Dữ liệu đang ở dạng mã hóa'
+                : 'Search View - Dữ liệu đã được backend giải mã'
+            }}
+          </h5>
+
+          <div *ngIf="accessMode === 'public'">
+            Bạn đang ở chế độ <b>Test Public</b>. Màn hình này dùng để quan sát dữ liệu
+            trong CSDL ở dạng mã hóa hoặc bị che. Admin không nhìn thấy trực tiếp
+            họ tên, CCCD/CMND, số điện thoại và email thật.
+          </div>
+
+          <div *ngIf="accessMode === 'private'">
+            Bạn đang ở chế độ <b>Test Private</b>. Màn hình này hiển thị dữ liệu đã được
+            backend giải mã trước khi trả về frontend.
+          </div>
+        </div>
+
+        <span
+          class="badge"
+          [ngClass]="accessMode === 'public' ? 'badge-warning' : 'badge-success'"
+        >
+          {{ accessMode === 'public' ? 'PUBLIC / ADMIN' : 'PRIVATE / SEARCH' }}
+        </span>
+      </div>
+    </div>
     <!-- begin: Filtration form -->
     <div class="form form-label-right ml-4">
       <div class="form-group row">
@@ -93,7 +128,20 @@
             <span>Họ tên</span>
           </th>
           <td mat-cell *matCellDef="let r">
-            <span>{{ r.hoTen || "****" }}</span>
+            <!-- Public hiện chuỗi mã hóa -->
+            <span
+              *ngIf="accessMode === 'public'"
+              class="text-monospace d-inline-block text-truncate"
+              style="max-width: 260px"
+              [title]="r.hoTen || '****'"
+            >
+              {{ r.hoTen || "****" }}
+            </span>
+
+            <!-- Private hiện dữ liệu đã giải mã bình thường -->
+            <span *ngIf="accessMode === 'private'">
+              {{ r.hoTen || "****" }}
+            </span>
           </td>
         </ng-container>
 
@@ -118,9 +166,23 @@
           <th mat-header-cell *matHeaderCellDef>
             <span>CMND</span>
           </th>
-          <td mat-cell *matCellDef="let r">
-            <span>{{ r.cmnd || "****" }}</span>
+           <td mat-cell *matCellDef="let r">
+            <!-- Public hiện chuỗi mã hóa -->
+            <span
+              *ngIf="accessMode === 'public'"
+              class="text-monospace d-inline-block text-truncate"
+              style="max-width: 220px"
+              [title]="r.cmnd || '****'"
+            >
+              {{ r.cmnd || "****" }}
+            </span>
+
+            <!-- Private hiện dữ liệu đã giải mã -->
+            <span *ngIf="accessMode === 'private'">
+              {{ r.cmnd || "****" }}
+            </span>
           </td>
+
         </ng-container>
 
         <!-- Điện thoại -->
@@ -129,7 +191,7 @@
             <span>Điện thoại</span>
           </th>
           <td mat-cell *matCellDef="let r">
-            <span>{{ r.mobile }}</span>
+            <span>{{ r.mobile || "****" }}</span>
           </td>
         </ng-container>
 
@@ -139,7 +201,7 @@
             <span>Email</span>
           </th>
           <td mat-cell *matCellDef="let r">
-            <span>{{ r.email }}</span>
+            <span>{{ r.email || "****" }}</span>
           </td>
         </ng-container>
 

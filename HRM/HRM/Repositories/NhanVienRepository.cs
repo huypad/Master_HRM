@@ -12,10 +12,12 @@ namespace HRM.Repositories
     public class NhanVienRepository : INhanVienRepository
     {
         private readonly HrmDbContext _context;
+        private readonly ISecurityService _securityService;
 
-        public NhanVienRepository(HrmDbContext context)
+        public NhanVienRepository(HrmDbContext context, ISecurityService securityService)
         {
             _context = context;
+            _securityService = securityService;
         }
 
         public static class SortDirectionConst
@@ -77,20 +79,130 @@ namespace HRM.Repositories
                 query = query.OrderBy(x => x.Id_NV);
             }
 
-            return await query
+            var records = await query
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(x => new NhanVienDTO
+                .Select(x => new
                 {
-                    Id_NV = x.Id_NV,
-                    MaNV = x.MaNV,
-                    HoTen = "*******",     
-                    NgaySinh = x.Ngaysinh,
-                    CMND = "*******",     
-                    Mobile = x.Mobile, 
-                    Email = x.Email    
+                    x.Id_NV,
+                    x.MaNV,
+                    x.Ngaysinh,
+                    x.I_Holot,
+                    x.I_Ten,
+                    x.I_CMND,
+                    x.I_Sotaikhoan,
+                    x.Mobile,
+                    x.Email
                 })
                 .ToListAsync();
+
+            return records.Select(x => new NhanVienDTO
+            {
+                Id_NV = x.Id_NV,
+                MaNV = x.MaNV,
+
+                // Admin View: hiển thị dữ liệu mã hóa/ký tự rác trong CSDL
+                HoTen = $"{ToBase64Display(x.I_Holot)} {ToBase64Display(x.I_Ten)}".Trim(),
+
+                NgaySinh = x.Ngaysinh,
+
+                // Admin View: CMND/CCCD hiển thị dạng mã hóa
+                CMND = ToBase64Display(x.I_CMND),
+
+                // DB hiện tại chưa có I_Mobile/I_Email nên tạm che để không lộ dữ liệu thật
+                Mobile = "*******",
+                Email = "*******"
+            }).ToList();
+        }
+
+        private static string ToBase64Display(object? data)
+        {
+            // Nếu dữ liệu null thì hiển thị ****
+            if (data == null)
+            {
+                return "*******";
+            }
+
+            // Nếu dữ liệu là byte, chuyển byte thành chuỗi Base64 để frontend hiển thị được
+            if (data is byte[] bytes)
+            {
+                if (bytes.Length == 0)
+                {
+                    return "*******";
+                }
+
+                return Convert.ToBase64String(bytes);
+            }
+
+            // Nếu dữ liệu không phải byte, chuyển tạm sang string
+            var text = data.ToString();
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return "*******";
+            }
+
+            return text;
+        }
+
+        // Mã hóa dữ liệu thật trước khi đưa xuống DB
+        private byte[]? EncryptToDb(string? rawData)
+        {
+            if (string.IsNullOrWhiteSpace(rawData))
+            {
+                return null;
+            }
+
+            var encryptedText = _securityService.EncryptData(rawData);
+
+            if (string.IsNullOrWhiteSpace(encryptedText))
+            {
+                return null;
+            }
+
+            return Convert.FromBase64String(encryptedText);
+        }
+
+        // Giải mã dữ liệu từ DB sang dữ liệu thật
+        private string? DecryptFromDb(object? dbValue)
+        {
+            if (dbValue == null || dbValue == DBNull.Value)
+            {
+                return null;
+            }
+
+            if (dbValue is not byte[] encryptedBytes || encryptedBytes.Length == 0)
+            {
+                return null;
+            }
+
+            var encryptedText = Convert.ToBase64String(encryptedBytes);
+            return _securityService.DecryptData(encryptedText);
+        }
+
+        // Tạo Search Index / Hash từ dữ liệu thật để lưu vào DB.
+        private object SearchIndexToDb(string? rawData, string columnProfile)
+        {
+            if (string.IsNullOrWhiteSpace(rawData))
+            {
+                return DBNull.Value;
+            }
+
+            var hex = _securityService.GenerateSearchIndex(rawData, columnProfile);
+
+            if (string.IsNullOrWhiteSpace(hex))
+            {
+                return DBNull.Value;
+            }
+
+            return Convert.FromHexString(hex);
+        }
+
+        // Tạo Search Index / Hash khi cần tìm kiếm.
+        private byte[] SearchIndexBytes(string rawData, string columnProfile)
+        {
+            var hex = _securityService.GenerateSearchIndex(rawData, columnProfile);
+            return Convert.FromHexString(hex);
         }
 
         public async Task<List<NhanVienDTO>> GetPagedPrivateAsync(
@@ -308,22 +420,20 @@ namespace HRM.Repositories
 
             cmd.Parameters.Add(new SqlParameter("@I_Holot", SqlDbType.VarBinary)
             {
-                Value = (object?)EncryptionHelper.EncryptString(entity.Holot) ?? DBNull.Value
+                Value = (object?)EncryptToDb(entity.Holot) ?? DBNull.Value
             });
 
             cmd.Parameters.Add(new SqlParameter("@I_Ten", SqlDbType.VarBinary)
             {
-                Value = (object?)EncryptionHelper.EncryptString(entity.Ten) ?? DBNull.Value
+                Value = (object?)EncryptToDb(entity.Ten) ?? DBNull.Value
             });
 
             cmd.Parameters.Add(new SqlParameter("@I_CMND", SqlDbType.VarBinary, 512)
             {
-                Value = (object?)EncryptionHelper.EncryptString(entity.CMND) ?? DBNull.Value
+                Value = (object?)EncryptToDb(entity.CMND) ?? DBNull.Value
             });
 
-            var cmndHash = string.IsNullOrWhiteSpace(entity.CMND)
-                ? (object)DBNull.Value
-                : SecurityIndexHelper.ComputeHashWithSalt(entity.CMND);
+            var cmndHash = SearchIndexToDb(entity.CMND, "CMND");
 
             cmd.Parameters.Add(new SqlParameter("@CMNDHash", SqlDbType.VarBinary, 32)
             {
@@ -347,12 +457,10 @@ namespace HRM.Repositories
 
             cmd.Parameters.Add(new SqlParameter("@I_Sotaikhoan", SqlDbType.VarBinary, 512)
             {
-                Value = (object?)EncryptionHelper.EncryptString(entity.Sotaikhoan) ?? DBNull.Value
+                Value = (object?)EncryptToDb(entity.Sotaikhoan) ?? DBNull.Value
             });
 
-            var sotaikhoanHash = string.IsNullOrWhiteSpace(entity.Sotaikhoan)
-                ? (object)DBNull.Value
-                : SecurityIndexHelper.ComputeHashWithSalt(entity.Sotaikhoan);
+            var sotaikhoanHash = SearchIndexToDb(entity.Sotaikhoan, "Sotaikhoan");
 
             cmd.Parameters.Add(new SqlParameter("@SotaikhoanHash", SqlDbType.VarBinary, 32)
             {
