@@ -59,6 +59,20 @@ namespace HRM.Services
         {
             var items = await _repo.SearchPublicAsync(keyword, page, pageSize, sortColumn, sortDirection);
             var total = await _repo.CountSearchPublicAsync(keyword);
+            // Dừng và tính thời gian bước 2
+            var thoiGianBuoc2 = stopwatch.ElapsedMilliseconds - thoiGianBuoc1;
+
+            // Tính đụng độ
+            int soLuongThucTe = items.Count; 
+            int soBangGhiDungDo = total - soLuongThucTe;
+
+            // In log ra Terminal
+            Console.WriteLine($"\n========================================");
+            Console.WriteLine($"[LOG JMETER] API: SearchPublicAsync (200k data)");
+            Console.WriteLine($"- Thời gian lấy Data (B1): {thoiGianBuoc1} ms");
+            Console.WriteLine($"- Thời gian đếm Tổng (B2): {thoiGianBuoc2} ms");
+            Console.WriteLine($"- Đụng độ: {soBangGhiDungDo} bản ghi");
+            Console.WriteLine($"========================================\n");
 
             return new PagedResult<NhanVienDTO>
             {
