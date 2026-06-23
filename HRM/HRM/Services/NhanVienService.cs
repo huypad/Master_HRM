@@ -56,8 +56,13 @@ namespace HRM.Services
             string? sortColumn,
             string? sortDirection
         )
-        {
+        {   
+            //Bật đồng hồ
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             var items = await _repo.SearchPublicAsync(keyword, page, pageSize, sortColumn, sortDirection);
+
+            // Dừng và tính thời gian bước 1
+            var thoiGianBuoc1 = stopwatch.ElapsedMilliseconds;
             var total = await _repo.CountSearchPublicAsync(keyword);
             // Dừng và tính thời gian bước 2
             var thoiGianBuoc2 = stopwatch.ElapsedMilliseconds - thoiGianBuoc1;
