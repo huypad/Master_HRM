@@ -1,9 +1,6 @@
-﻿using HRM.Data;
 using HRM.Data;
 using HRM.Helpers.Security;
 using HRM.Repositories;
-using HRM.Repositories;
-using HRM.Services;
 using HRM.Services;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
@@ -15,6 +12,7 @@ builder.Services.AddDbContext<HrmDbContext>(options =>
 
 builder.Services.AddScoped<INhanVienRepository, NhanVienRepository>();
 builder.Services.AddScoped<INhanVienService, NhanVienService>();
+builder.Services.AddScoped<ISecurityService, SecurityService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
