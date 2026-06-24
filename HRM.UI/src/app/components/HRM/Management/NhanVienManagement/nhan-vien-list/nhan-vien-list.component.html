@@ -43,26 +43,7 @@
       [ngClass]="accessMode === 'public' ? 'alert-warning' : 'alert-success'"
     >
       <div class="d-flex align-items-center justify-content-between">
-        <div>
-          <h5 class="mb-2">
-            {{
-              accessMode === 'public'
-                ? 'Admin View - Dữ liệu đang ở dạng mã hóa'
-                : 'Search View - Dữ liệu đã được backend giải mã'
-            }}
-          </h5>
-
-          <div *ngIf="accessMode === 'public'">
-            Bạn đang ở chế độ <b>Test Public</b>. Màn hình này dùng để quan sát dữ liệu
-            trong CSDL ở dạng mã hóa hoặc bị che. Admin không nhìn thấy trực tiếp
-            họ tên, CCCD/CMND, số điện thoại và email thật.
-          </div>
-
-          <div *ngIf="accessMode === 'private'">
-            Bạn đang ở chế độ <b>Test Private</b>. Màn hình này hiển thị dữ liệu đã được
-            backend giải mã trước khi trả về frontend.
-          </div>
-        </div>
+        
 
         <span
           class="badge"
