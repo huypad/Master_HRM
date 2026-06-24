@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Data;
 using HRM.Common;
 using HRM.Helpers.Security;
-using HRM.Services;
+using ISecurityService = HRM.Services.ISecurityService;
 
 namespace HRM.Repositories
 {
@@ -58,8 +58,8 @@ namespace HRM.Repositories
 
         public async Task<int> CountPrivateAsync()
         {
-            var allItems = await GetAllPrivateAsync();
-            return allItems.Count;
+            return await _context.NhanViens
+                .CountAsync(x => x.Disable == false || x.Disable == null);
         }
 
         public async Task<List<NhanVienDTO>> GetPagedPublicAsync(
@@ -90,8 +90,8 @@ namespace HRM.Repositories
                     HoTen = "*******",     
                     NgaySinh = x.Ngaysinh,
                     CMND = "*******",     
-                    Mobile = x.Mobile, 
-                    Email = x.Email    
+                    Mobile = "*******", 
+                    Email = "*******"    
                 })
                 .ToListAsync();
         }
@@ -103,19 +103,18 @@ namespace HRM.Repositories
             string? sortDirection
         )
         {
-            var allItems = await GetAllPrivateAsync();
+            var query = _context.NhanViens
+                .AsNoTracking()
+                .Where(x => x.Disable == false || x.Disable == null);
 
-            IEnumerable<NhanVienDTO> query = allItems
-                .Where(x => x != null);
-
-            query = ApplySortingPrivate(query, sortColumn, sortDirection);
+            query = ApplySorting(query, sortColumn, sortDirection);
 
             if (string.IsNullOrWhiteSpace(sortColumn))
             {
                 query = query.OrderBy(x => x.Id_NV);
             }
 
-            var totalItems = query.Count();
+            var totalItems = await query.CountAsync();
             var maxPage = (int)Math.Ceiling(totalItems / (double)pageSize);
 
             if (maxPage <= 0)
@@ -127,10 +126,45 @@ namespace HRM.Repositories
                 page = maxPage;
             }
 
-            return query
+            var pagedEntities = await query
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .ToList();
+                .ToListAsync();
+
+            var result = new List<NhanVienDTO>();
+            foreach (var entity in pagedEntities)
+            {
+                try
+                {
+                    var holot = (entity.I_Holot == null || entity.I_Holot.Length == 0)
+                        ? string.Empty
+                        : _securityService.DecryptData(Convert.ToBase64String(entity.I_Holot));
+                    var ten = (entity.I_Ten == null || entity.I_Ten.Length == 0)
+                        ? string.Empty
+                        : _securityService.DecryptData(Convert.ToBase64String(entity.I_Ten));
+                    var cmnd = (entity.I_CMND == null || entity.I_CMND.Length == 0)
+                        ? string.Empty
+                        : _securityService.DecryptData(Convert.ToBase64String(entity.I_CMND));
+
+                    result.Add(new NhanVienDTO
+                    {
+                        Id_NV = entity.Id_NV,
+                        MaNV = entity.MaNV,
+                        HoTen = $"{holot} {ten}".Trim(),
+                        NgaySinh = entity.Ngaysinh,
+                        CMND = cmnd,
+                        Mobile = string.IsNullOrWhiteSpace(entity.Mobile) ? " " : entity.Mobile,
+                        Email = string.IsNullOrWhiteSpace(entity.Email) ? " " : entity.Email
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Decrypt lỗi tại Id_NV = {entity.Id_NV}. Lỗi: {ex.Message}");
+                    continue;
+                }
+            }
+
+            return result;
         }
 
         public async Task<int> CountSearchPublicAsync(string keyword)
@@ -209,11 +243,11 @@ namespace HRM.Repositories
                 {
                     Id_NV = x.Id_NV,
                     MaNV = x.MaNV,
-                    HoTen = null,
+                    HoTen = "*******",
                     NgaySinh = x.Ngaysinh,
-                    CMND = "****",
-                    Mobile = x.Mobile,
-                    Email = x.Email
+                    CMND = "*******",
+                    Mobile = "*******",
+                    Email = "*******"
                 })
                 .ToListAsync();
         }
@@ -277,11 +311,11 @@ namespace HRM.Repositories
                 {
                     Id_NV = x.Id_NV,
                     MaNV = x.MaNV,
-                    HoTen = null,
+                    HoTen = "*******",
                     NgaySinh = x.Ngaysinh,
-                    CMND = "****",
-                    Mobile = x.Mobile,
-                    Email = x.Email
+                    CMND = "*******",
+                    Mobile = "*******",
+                    Email = "*******"
                 })
                 .FirstOrDefaultAsync();
         }
@@ -614,8 +648,8 @@ namespace HRM.Repositories
                             ? null
                             : (DateTime?)reader["Ngaysinh"],
                         CMND = cmnd,
-                        Mobile = reader["Mobile"] as string,
-                        Email = reader["Email"] as string
+                        Mobile = string.IsNullOrWhiteSpace(reader["Mobile"] as string) ? " " : reader["Mobile"] as string,
+                        Email = string.IsNullOrWhiteSpace(reader["Email"] as string) ? " " : reader["Email"] as string
                     });
                 }
                 catch (Exception ex)
