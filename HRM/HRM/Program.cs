@@ -1,9 +1,4 @@
-<<<<<<< HEAD
 using HRM.Data;
-=======
-﻿using HRM.Data;
->>>>>>> origin/Hung
-using HRM.Helpers.Security;
 using HRM.Repositories;
 using HRM.Services;
 using Microsoft.EntityFrameworkCore;
@@ -16,11 +11,7 @@ builder.Services.AddDbContext<HrmDbContext>(options =>
 
 builder.Services.AddScoped<INhanVienRepository, NhanVienRepository>();
 builder.Services.AddScoped<INhanVienService, NhanVienService>();
-<<<<<<< HEAD
-builder.Services.AddScoped<ISecurityService, SecurityService>();
-=======
-builder.Services.AddScoped<ISecurityService, MockSecurityService>();
->>>>>>> origin/Hung
+builder.Services.AddScoped<HRM.Services.ISecurityService, HRM.Services.SecurityService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
