@@ -1,14 +1,15 @@
 using HRM.Data;
+using HRM.Helpers.Security;
 using HRM.Repositories;
 using HRM.Services;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Cryptography;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<HrmDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("HRMConnection")));
 
+builder.Services.AddScoped<HRM.Helpers.Security.ISecurityService, HRM.Helpers.Security.MockSecurityService>();
 builder.Services.AddScoped<INhanVienRepository, NhanVienRepository>();
 builder.Services.AddScoped<INhanVienService, NhanVienService>();
 builder.Services.AddScoped<HRM.Services.ISecurityService, HRM.Services.SecurityService>();
@@ -37,12 +38,13 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 app.UseCors("AllowAll");
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI(c =>
     {
-        c.RoutePrefix = "swagger"; 
+        c.RoutePrefix = "swagger";
     });
 }
 

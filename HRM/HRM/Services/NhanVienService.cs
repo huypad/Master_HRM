@@ -1,4 +1,4 @@
-﻿using HRM.DTOs;
+using HRM.DTOs;
 using HRM.Entities;
 using HRM.Model;
 using HRM.Model.NhanVien;
@@ -28,7 +28,8 @@ namespace HRM.Services
             return new
             {
                 items,
-                total
+                total,
+                searchDebug = (SearchDebugInfo?)null
             };
         }
 
@@ -45,7 +46,8 @@ namespace HRM.Services
             return new
             {
                 items,
-                total
+                total,
+                searchDebug = (SearchDebugInfo?)null
             };
         }
 
@@ -56,33 +58,27 @@ namespace HRM.Services
             string? sortColumn,
             string? sortDirection
         )
-        {   
-            //Bật đồng hồ
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        {
             var items = await _repo.SearchPublicAsync(keyword, page, pageSize, sortColumn, sortDirection);
 
-            // Dừng và tính thời gian bước 1
-            var thoiGianBuoc1 = stopwatch.ElapsedMilliseconds;
-            var total = await _repo.CountSearchPublicAsync(keyword);
-            // Dừng và tính thời gian bước 2
-            var thoiGianBuoc2 = stopwatch.ElapsedMilliseconds - thoiGianBuoc1;
-
-            // Tính đụng độ
-            int soLuongThucTe = items.Count; 
-            int soBangGhiDungDo = total - soLuongThucTe;
-
-            // In log ra Terminal
-            Console.WriteLine($"\n========================================");
-            Console.WriteLine($"[LOG JMETER] API: SearchPublicAsync (200k data)");
-            Console.WriteLine($"- Thời gian lấy Data (B1): {thoiGianBuoc1} ms");
-            Console.WriteLine($"- Thời gian đếm Tổng (B2): {thoiGianBuoc2} ms");
-            Console.WriteLine($"- Đụng độ: {soBangGhiDungDo} bản ghi");
-            Console.WriteLine($"========================================\n");
+            var debug = _repo.LastSearchDebug;
+            if (debug != null)
+            {
+                Console.WriteLine($"\n========================================");
+                Console.WriteLine($"[LOG JMETER] API: SearchPublicAsync (200k data)");
+                Console.WriteLine($"- Thời gian lọc thô (B1): {debug.Step1Ms} ms");
+                Console.WriteLine($"- Thời gian giải mã & lọc tinh (B2): {debug.Step2Ms} ms");
+                Console.WriteLine($"- Tổng thời gian: {debug.TotalMs} ms");
+                Console.WriteLine($"- Số lượng ứng viên: {debug.CandidateCount} dòng");
+                Console.WriteLine($"- Đụng độ: {debug.CollisionCount} bản ghi");
+                Console.WriteLine($"========================================\n");
+            }
 
             return new PagedResult<NhanVienDTO>
             {
                 Items = items,
-                Total = total
+                Total = _repo.LastSearchTotal,
+                SearchDebug = debug
             };
         }
 
@@ -95,12 +91,25 @@ namespace HRM.Services
         )
         {
             var items = await _repo.SearchPrivateAsync(keyword, page, pageSize, sortColumn, sortDirection);
-            var total = await _repo.CountSearchPrivateAsync(keyword);
+
+            var debug = _repo.LastSearchDebug;
+            if (debug != null)
+            {
+                Console.WriteLine($"\n========================================");
+                Console.WriteLine($"[LOG JMETER] API: SearchPrivateAsync (200k data)");
+                Console.WriteLine($"- Thời gian lọc thô (B1): {debug.Step1Ms} ms");
+                Console.WriteLine($"- Thời gian giải mã & lọc tinh (B2): {debug.Step2Ms} ms");
+                Console.WriteLine($"- Tổng thời gian: {debug.TotalMs} ms");
+                Console.WriteLine($"- Số lượng ứng viên: {debug.CandidateCount} dòng");
+                Console.WriteLine($"- Đụng độ: {debug.CollisionCount} bản ghi");
+                Console.WriteLine($"========================================\n");
+            }
 
             return new PagedResult<NhanVienDTO>
             {
                 Items = items,
-                Total = total
+                Total = _repo.LastSearchTotal,
+                SearchDebug = debug
             };
         }
 
@@ -111,8 +120,6 @@ namespace HRM.Services
 
         public async Task<NhanVienDTO?> GetByIdPrivateAsync(decimal id)
         {
-            // Repository đã decrypt và trả về NhanVienDTO rồi,
-            // service không cần ghép Holot/Ten hay decrypt lại.
             return await _repo.GetByIdPrivateAsync(id);
         }
 
@@ -129,9 +136,6 @@ namespace HRM.Services
                 Email = dto.Email,
                 Disable = false
             };
-
-            // Nếu model có số tài khoản thì bật dòng này.
-            // nv.Sotaikhoan = dto.Sotaikhoan;
 
             return await _repo.AddAsync(nv);
         }
@@ -154,9 +158,6 @@ namespace HRM.Services
                 Email = dto.Email,
                 Disable = false
             };
-
-            // Nếu model có số tài khoản thì bật dòng này.
-            // nv.Sotaikhoan = dto.Sotaikhoan;
 
             await _repo.UpdateAsync(nv);
             return true;

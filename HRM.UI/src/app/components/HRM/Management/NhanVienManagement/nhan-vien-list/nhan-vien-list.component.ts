@@ -21,7 +21,7 @@ import {
   MessageType,
 } from '../../../_core/utils/layout-utils.service';
 
-import { NhanVienDTO } from '../Model/nhan-vien.model';
+import { NhanVienDTO, SearchDebugInfo } from '../Model/nhan-vien.model';
 import { NhanVienService } from '../Services/nhan-vien.service';
 import { NhanVienEditDialogComponent } from '../nhan-vien-edit/nhan-vien-edit-dialog.component';
 
@@ -70,7 +70,7 @@ export class NhanVienListComponent implements OnInit, OnDestroy {
   paginator = new PaginatorState();
   isLoading = false;
 
-  accessMode: 'public' | 'private' = 'private';
+  accessMode: 'public' | 'private' = 'public';
 
   sorting: { column: string; direction: SortDirection } = {
     column: '',
@@ -78,6 +78,7 @@ export class NhanVienListComponent implements OnInit, OnDestroy {
   };
 
   searchKeyword = '';
+  searchDebug: SearchDebugInfo | null = null;
 
   dataSource = new MatTableDataSource<NhanVienDTO>();
   private subscriptions: Subscription[] = [];
@@ -109,6 +110,10 @@ export class NhanVienListComponent implements OnInit, OnDestroy {
 
       this.nhanVienService.isLoading$.subscribe((value) => {
         this.isLoading = value;
+      }),
+
+      this.nhanVienService.searchDebug$.subscribe((debug) => {
+        this.searchDebug = debug;
       })
     );
 
