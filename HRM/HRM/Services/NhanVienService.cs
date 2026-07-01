@@ -1,4 +1,4 @@
-﻿using HRM.DTOs;
+using HRM.DTOs;
 using HRM.Entities;
 using HRM.Model;
 using HRM.Model.NhanVien;
@@ -28,7 +28,8 @@ namespace HRM.Services
             return new
             {
                 items,
-                total
+                total,
+                searchDebug = (SearchDebugInfo?)null
             };
         }
 
@@ -45,7 +46,8 @@ namespace HRM.Services
             return new
             {
                 items,
-                total
+                total,
+                searchDebug = (SearchDebugInfo?)null
             };
         }
 
@@ -57,13 +59,14 @@ namespace HRM.Services
             string? sortDirection
         )
         {
+            // Search trên màn hình Public/Admin vẫn trả dữ liệu đã giải mã để người dùng thấy kết quả đầy đủ.
             var items = await _repo.SearchPublicAsync(keyword, page, pageSize, sortColumn, sortDirection);
-            var total = await _repo.CountSearchPublicAsync(keyword);
 
             return new PagedResult<NhanVienDTO>
             {
                 Items = items,
-                Total = total
+                Total = _repo.LastSearchTotal,
+                SearchDebug = _repo.LastSearchDebug
             };
         }
 
@@ -76,12 +79,12 @@ namespace HRM.Services
         )
         {
             var items = await _repo.SearchPrivateAsync(keyword, page, pageSize, sortColumn, sortDirection);
-            var total = await _repo.CountSearchPrivateAsync(keyword);
 
             return new PagedResult<NhanVienDTO>
             {
                 Items = items,
-                Total = total
+                Total = _repo.LastSearchTotal,
+                SearchDebug = _repo.LastSearchDebug
             };
         }
 
@@ -92,8 +95,6 @@ namespace HRM.Services
 
         public async Task<NhanVienDTO?> GetByIdPrivateAsync(decimal id)
         {
-            // Repository đã decrypt và trả về NhanVienDTO rồi,
-            // service không cần ghép Holot/Ten hay decrypt lại.
             return await _repo.GetByIdPrivateAsync(id);
         }
 
@@ -110,9 +111,6 @@ namespace HRM.Services
                 Email = dto.Email,
                 Disable = false
             };
-
-            // Nếu model có số tài khoản thì bật dòng này.
-            // nv.Sotaikhoan = dto.Sotaikhoan;
 
             return await _repo.AddAsync(nv);
         }
@@ -135,9 +133,6 @@ namespace HRM.Services
                 Email = dto.Email,
                 Disable = false
             };
-
-            // Nếu model có số tài khoản thì bật dòng này.
-            // nv.Sotaikhoan = dto.Sotaikhoan;
 
             await _repo.UpdateAsync(nv);
             return true;

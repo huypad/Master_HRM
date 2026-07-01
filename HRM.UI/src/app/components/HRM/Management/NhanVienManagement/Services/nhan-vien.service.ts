@@ -6,6 +6,7 @@ import { environment } from '../../../../../environments/environment';
 import {
   NhanVienDTO,
   NhanVienModel,
+  SearchDebugInfo,
   TableState,
 } from '../Model/nhan-vien.model';
 
@@ -14,16 +15,19 @@ type AccessMode = 'public' | 'private';
 interface NhanVienPagedResponse {
   items: NhanVienDTO[];
   total: number;
+  searchDebug?: SearchDebugInfo | null;
 }
 
 @Injectable({ providedIn: 'root' })
 export class NhanVienService {
   private apiUrl = environment.apiUrl + '/nhanvien';
 
-  private accessMode: AccessMode = 'private';
+  // Mới vào trang sẽ là Admin/Public: danh sách mã hóa/rác.
+  private accessMode: AccessMode = 'public';
 
   private _items$ = new BehaviorSubject<NhanVienDTO[]>([]);
   private _isLoading$ = new BehaviorSubject<boolean>(false);
+  private _searchDebug$ = new BehaviorSubject<SearchDebugInfo | null>(null);
 
   private _tableState$ = new BehaviorSubject<TableState>({
     paginator: { pageIndex: 0, pageSize: 10, total: 0 },
@@ -42,6 +46,7 @@ export class NhanVienService {
 
   items$ = this._items$.asObservable();
   isLoading$ = this._isLoading$.asObservable();
+  searchDebug$ = this._searchDebug$.asObservable();
   tableState$ = this._tableState$.asObservable();
 
   constructor(private http: HttpClient) {
@@ -70,22 +75,21 @@ export class NhanVienService {
             params.keyword = trimmedKeyword;
           }
 
-          return this.http
-            .get<NhanVienPagedResponse>(url, { params })
-            .pipe(
-              tap((res) => console.log('NhanVien API response:', res)),
-              catchError((err) => {
-                console.error('NhanVien API error:', err);
-                return of({ items: [], total: 0 });
-              }),
-              finalize(() => this._isLoading$.next(false))
-            );
+          return this.http.get<NhanVienPagedResponse>(url, { params }).pipe(
+            tap((res) => console.log('NhanVien API response:', res)),
+            catchError((err) => {
+              console.error('NhanVien API error:', err);
+              return of({ items: [], total: 0, searchDebug: null });
+            }),
+            finalize(() => this._isLoading$.next(false))
+          );
         })
       )
       .subscribe((res) => {
         const current = this._tableState$.value;
 
         this._items$.next(res.items ?? []);
+        this._searchDebug$.next(res.searchDebug ?? null);
 
         this._tableState$.next({
           ...current,
@@ -137,6 +141,10 @@ export class NhanVienService {
         pageSize,
       },
     });
+
+    if (!trimmedKeyword) {
+      this._searchDebug$.next(null);
+    }
 
     this.loadTrigger$.next({
       keyword: trimmedKeyword,

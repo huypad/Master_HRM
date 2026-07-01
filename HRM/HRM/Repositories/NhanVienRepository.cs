@@ -1,11 +1,15 @@
-﻿using HRM.Data;
+using HRM.Data;
 using HRM.DTOs;
 using HRM.Entities;
+using HRM.Helpers.Security;
+using HRM.Model;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using System.Data;
-using HRM.Common;
-using HRM.Helpers.Security;
+using System.Diagnostics;
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
 
 namespace HRM.Repositories
 {
@@ -13,6 +17,9 @@ namespace HRM.Repositories
     {
         private readonly HrmDbContext _context;
         private readonly ISecurityService _securityService;
+
+        public SearchDebugInfo? LastSearchDebug { get; private set; }
+        public int LastSearchTotal { get; private set; }
 
         public NhanVienRepository(HrmDbContext context, ISecurityService securityService)
         {
@@ -33,26 +40,38 @@ namespace HRM.Repositories
         )
         {
             if (string.IsNullOrWhiteSpace(sortColumn))
-            {
                 return query;
-            }
 
-            var isDesc = sortDirection?.ToLower() == "desc";
+            var isDesc = sortDirection?.ToLower() == SortDirectionConst.Desc;
 
             return sortColumn switch
             {
-                "ngaySinh" =>
-                    isDesc ? query.OrderByDescending(x => x.Ngaysinh)
-                           : query.OrderBy(x => x.Ngaysinh),
+                "ngaySinh" => isDesc ? query.OrderByDescending(x => x.Ngaysinh) : query.OrderBy(x => x.Ngaysinh),
+                _ => query
+            };
+        }
 
+        private IEnumerable<NhanVienDTO> ApplySortingPrivate(
+            IEnumerable<NhanVienDTO> query,
+            string? sortColumn,
+            string? sortDirection
+        )
+        {
+            if (string.IsNullOrWhiteSpace(sortColumn))
+                return query;
+
+            var isDesc = sortDirection?.ToLower() == SortDirectionConst.Desc;
+
+            return sortColumn switch
+            {
+                "ngaySinh" => isDesc ? query.OrderByDescending(x => x.NgaySinh) : query.OrderBy(x => x.NgaySinh),
                 _ => query
             };
         }
 
         public async Task<int> CountPublicAsync()
         {
-            return await _context.NhanViens
-                .CountAsync(x => x.Disable == false || x.Disable == null);
+            return await _context.NhanViens.CountAsync(x => x.Disable == false || x.Disable == null);
         }
 
         public async Task<int> CountPrivateAsync()
@@ -68,6 +87,9 @@ namespace HRM.Repositories
             string? sortDirection
         )
         {
+            LastSearchDebug = null;
+            LastSearchTotal = 0;
+
             var query = _context.NhanViens
                 .AsNoTracking()
                 .Where(x => x.Disable == false || x.Disable == null);
@@ -75,134 +97,14 @@ namespace HRM.Repositories
             query = ApplySorting(query, sortColumn, sortDirection);
 
             if (string.IsNullOrWhiteSpace(sortColumn))
-            {
                 query = query.OrderBy(x => x.Id_NV);
-            }
 
-            var records = await query
+            var rows = await query
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(x => new
-                {
-                    x.Id_NV,
-                    x.MaNV,
-                    x.Ngaysinh,
-                    x.I_Holot,
-                    x.I_Ten,
-                    x.I_CMND,
-                    x.I_Sotaikhoan,
-                    x.Mobile,
-                    x.Email
-                })
                 .ToListAsync();
 
-            return records.Select(x => new NhanVienDTO
-            {
-                Id_NV = x.Id_NV,
-                MaNV = x.MaNV,
-
-                // Admin View: hiển thị dữ liệu mã hóa/ký tự rác trong CSDL
-                HoTen = $"{ToBase64Display(x.I_Holot)} {ToBase64Display(x.I_Ten)}".Trim(),
-
-                NgaySinh = x.Ngaysinh,
-
-                // Admin View: CMND/CCCD hiển thị dạng mã hóa
-                CMND = ToBase64Display(x.I_CMND),
-
-                // DB hiện tại chưa có I_Mobile/I_Email nên tạm che để không lộ dữ liệu thật
-                Mobile = "*******",
-                Email = "*******"
-            }).ToList();
-        }
-
-        private static string ToBase64Display(object? data)
-        {
-            // Nếu dữ liệu null thì hiển thị ****
-            if (data == null)
-            {
-                return "*******";
-            }
-
-            // Nếu dữ liệu là byte, chuyển byte thành chuỗi Base64 để frontend hiển thị được
-            if (data is byte[] bytes)
-            {
-                if (bytes.Length == 0)
-                {
-                    return "*******";
-                }
-
-                return Convert.ToBase64String(bytes);
-            }
-
-            // Nếu dữ liệu không phải byte, chuyển tạm sang string
-            var text = data.ToString();
-
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                return "*******";
-            }
-
-            return text;
-        }
-
-        // Mã hóa dữ liệu thật trước khi đưa xuống DB
-        private byte[]? EncryptToDb(string? rawData)
-        {
-            if (string.IsNullOrWhiteSpace(rawData))
-            {
-                return null;
-            }
-
-            var encryptedText = _securityService.EncryptData(rawData);
-
-            if (string.IsNullOrWhiteSpace(encryptedText))
-            {
-                return null;
-            }
-
-            return Convert.FromBase64String(encryptedText);
-        }
-
-        // Giải mã dữ liệu từ DB sang dữ liệu thật
-        private string? DecryptFromDb(object? dbValue)
-        {
-            if (dbValue == null || dbValue == DBNull.Value)
-            {
-                return null;
-            }
-
-            if (dbValue is not byte[] encryptedBytes || encryptedBytes.Length == 0)
-            {
-                return null;
-            }
-
-            var encryptedText = Convert.ToBase64String(encryptedBytes);
-            return _securityService.DecryptData(encryptedText);
-        }
-
-        // Tạo Search Index / Hash từ dữ liệu thật để lưu vào DB.
-        private object SearchIndexToDb(string? rawData, string columnProfile)
-        {
-            if (string.IsNullOrWhiteSpace(rawData))
-            {
-                return DBNull.Value;
-            }
-
-            var hex = _securityService.GenerateSearchIndex(rawData, columnProfile);
-
-            if (string.IsNullOrWhiteSpace(hex))
-            {
-                return DBNull.Value;
-            }
-
-            return Convert.FromHexString(hex);
-        }
-
-        // Tạo Search Index / Hash khi cần tìm kiếm.
-        private byte[] SearchIndexBytes(string rawData, string columnProfile)
-        {
-            var hex = _securityService.GenerateSearchIndex(rawData, columnProfile);
-            return Convert.FromHexString(hex);
+            return rows.Select(ToPublicDto).ToList();
         }
 
         public async Task<List<NhanVienDTO>> GetPagedPrivateAsync(
@@ -212,216 +114,144 @@ namespace HRM.Repositories
             string? sortDirection
         )
         {
-            var allItems = await GetAllPrivateAsync();
+            LastSearchDebug = null;
+            LastSearchTotal = 0;
 
-            IEnumerable<NhanVienDTO> query = allItems
-                .Where(x => x != null);
+            var allItems = await GetAllPrivateAsync();
+            IEnumerable<NhanVienDTO> query = allItems.Where(x => x != null);
 
             query = ApplySortingPrivate(query, sortColumn, sortDirection);
 
             if (string.IsNullOrWhiteSpace(sortColumn))
-            {
                 query = query.OrderBy(x => x.Id_NV);
-            }
 
             var totalItems = query.Count();
             var maxPage = (int)Math.Ceiling(totalItems / (double)pageSize);
 
             if (maxPage <= 0)
-            {
                 page = 1;
-            }
             else if (page > maxPage)
-            {
                 page = maxPage;
-            }
 
-            return query
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToList();
+            return query.Skip((page - 1) * pageSize).Take(pageSize).ToList();
         }
 
-        public async Task<int> CountSearchPublicAsync(string keyword)
+        public Task<int> CountSearchPublicAsync(string keyword)
         {
-            keyword = keyword.Trim().ToLower();
-
-            return await _context.NhanViens.CountAsync(x =>
-                (x.Disable == false || x.Disable == null) &&
-                (
-                    (x.MaNV ?? "").ToLower().Contains(keyword) ||
-                    (x.Mobile ?? "").Contains(keyword) ||
-                    (x.Email ?? "").ToLower().Contains(keyword)
-                )
-            );
+            return Task.FromResult(LastSearchTotal);
         }
 
-        public async Task<int> CountSearchPrivateAsync(string keyword)
+        public Task<int> CountSearchPrivateAsync(string keyword)
         {
-            keyword = keyword.Trim();
-
-            var candidateIds = await SearchCandidateIdsBySecureIndexAsync(keyword);
-
-            if (!string.IsNullOrWhiteSpace(keyword) && keyword.All(char.IsDigit))
-            {
-                var exactIds = await FindIdsByCMNDHashAsync(keyword);
-                candidateIds = candidateIds
-                    .Union(exactIds)
-                    .Distinct()
-                    .ToList();
-            }
-
-            var candidateItems = await GetPrivateByIdsAsync(candidateIds);
-            var normalizedKeyword = keyword.ToLowerInvariant();
-
-            return candidateItems.Count(x =>
-                ((x.MaNV ?? "").ToLower().Contains(normalizedKeyword)) ||
-                ((x.HoTen ?? "").ToLower().Contains(normalizedKeyword)) ||
-                ((x.CMND ?? "").Contains(keyword)) ||
-                ((x.Mobile ?? "").Contains(keyword)) ||
-                ((x.Email ?? "").ToLower().Contains(normalizedKeyword))
-            );
+            return Task.FromResult(LastSearchTotal);
         }
 
-        public async Task<List<NhanVienDTO>> SearchPublicAsync(
-        string keyword,
-        int page,
-        int pageSize,
-        string? sortColumn,
-        string? sortDirection
+        /// <summary>
+        /// Search ở màn hình Public/Admin vẫn trả kết quả đã giải mã theo yêu cầu:
+        /// không nhập keyword thì xem dữ liệu mã hóa; nhập keyword thì search và hiện thông tin đầy đủ.
+        /// </summary>
+        public Task<List<NhanVienDTO>> SearchPublicAsync(
+            string keyword,
+            int page,
+            int pageSize,
+            string? sortColumn,
+            string? sortDirection
         )
         {
-            keyword = keyword.Trim().ToLower();
-
-            var query = _context.NhanViens
-                .AsNoTracking()
-                .Where(x =>
-                    (x.Disable == false || x.Disable == null) &&
-                    (
-                        (x.MaNV ?? "").ToLower().Contains(keyword) ||
-                        (x.Mobile ?? "").Contains(keyword) ||
-                        (x.Email ?? "").ToLower().Contains(keyword)
-                    )
-                );
-
-            query = ApplySorting(query, sortColumn, sortDirection);
-
-            if (string.IsNullOrWhiteSpace(sortColumn))
-            {
-                query = query.OrderBy(x => x.Id_NV);
-            }
-
-            var records = await query
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .Select(x => new
-                {
-                    x.Id_NV,
-                    x.MaNV,
-                    x.Ngaysinh,
-                    x.I_Holot,
-                    x.I_Ten,
-                    x.I_CMND,
-                    x.Mobile,
-                    x.Email
-                })
-                .ToListAsync();
-
-            return records.Select(x => new NhanVienDTO
-            {
-                Id_NV = x.Id_NV,
-                MaNV = x.MaNV,
-                HoTen = $"{ToBase64Display(x.I_Holot)} {ToBase64Display(x.I_Ten)}".Trim(),
-                NgaySinh = x.Ngaysinh,
-                CMND = ToBase64Display(x.I_CMND),
-                Mobile = "*******",
-                Email = "*******"
-            }).ToList();
+            return SearchPrivateAsync(keyword, page, pageSize, sortColumn, sortDirection);
         }
 
         public async Task<List<NhanVienDTO>> SearchPrivateAsync(
-        string keyword,
-        int page,
-        int pageSize,
-        string? sortColumn,
-        string? sortDirection
+            string keyword,
+            int page,
+            int pageSize,
+            string? sortColumn,
+            string? sortDirection
         )
         {
-            keyword = keyword.Trim();
+            var totalSw = Stopwatch.StartNew();
+            keyword = (keyword ?? string.Empty).Trim();
 
-            // Phase 1: lọc ứng viên bằng SecureIndex
-            var candidateIds = await SearchCandidateIdsBySecureIndexAsync(keyword);
-
-            // Exact lookup bổ sung theo CMNDHash nếu keyword là số
-            if (!string.IsNullOrWhiteSpace(keyword) && keyword.All(char.IsDigit))
+            if (string.IsNullOrWhiteSpace(keyword))
             {
-                var exactIds = await FindIdsByCMNDHashAsync(keyword);
-                candidateIds = candidateIds
-                    .Union(exactIds)
-                    .Distinct()
+                LastSearchDebug = null;
+                LastSearchTotal = 0;
+                return await GetPagedPrivateAsync(page, pageSize, sortColumn, sortDirection);
+            }
+
+            var isCmndSearch = IsCmndKeyword(keyword);
+            var searchType = isCmndSearch ? "CMND/CCCD" : "Họ tên";
+
+            // STEP 1: lọc ứng viên bằng hash/index trong SQL.
+            var step1Sw = Stopwatch.StartNew();
+            var candidateIds = isCmndSearch
+                ? await FindIdsByCMNDHashAsync(keyword)
+                : await SearchCandidateIdsBySecureIndexAsync(keyword);
+            step1Sw.Stop();
+
+            var candidateCount = candidateIds.Distinct().Count();
+
+            // STEP 2: lấy tập ứng viên, decrypt trên RAM, so sánh lại với keyword thật.
+            var step2Sw = Stopwatch.StartNew();
+
+            var candidateItems = candidateIds.Any()
+                ? await GetPrivateByIdsAsync(candidateIds)
+                : new List<NhanVienDTO>();
+
+            var matchedItems = candidateItems
+                .Where(x => MatchesSearchKeyword(x, keyword))
+                .ToList();
+
+            // Fallback để demo không bị rỗng nếu SecureIndex/CMNDHash trong DB đang cũ hoặc chưa rebuild.
+            // Đây vẫn là backend decrypt + so sánh lại dữ liệu thật; chỉ chạy khi bước index không đủ kết quả.
+            if (!matchedItems.Any())
+            {
+                var fallbackItems = await GetAllPrivateAsync();
+                candidateItems = fallbackItems;
+                matchedItems = fallbackItems
+                    .Where(x => MatchesSearchKeyword(x, keyword))
                     .ToList();
             }
 
-            // Phase 2: chỉ giải mã tập ứng viên
-            var candidateItems = await GetPrivateByIdsAsync(candidateIds);
+            step2Sw.Stop();
+            totalSw.Stop();
 
-            // Verification: áp lại query gốc trên tập đã giải mã
-            var normalizedKeyword = keyword.ToLowerInvariant();
+            LastSearchTotal = matchedItems.Count;
 
-            IEnumerable<NhanVienDTO> query = candidateItems.Where(x =>
-                ((x.MaNV ?? "").ToLower().Contains(normalizedKeyword)) ||
-                ((x.HoTen ?? "").ToLower().Contains(normalizedKeyword)) ||
-                ((x.CMND ?? "").Contains(keyword)) ||
-                ((x.Mobile ?? "").Contains(keyword)) ||
-                ((x.Email ?? "").ToLower().Contains(normalizedKeyword))
-            );
+            var firstMatched = matchedItems.FirstOrDefault();
+            LastSearchDebug = new SearchDebugInfo
+            {
+                SearchKeyword = keyword,
+                SearchType = searchType,
+                DecryptedValue = firstMatched == null
+                    ? null
+                    : isCmndSearch ? firstMatched.CMND : firstMatched.HoTen,
+                CompareResult = firstMatched == null ? "Không khớp" : "Khớp",
+                TotalMs = totalSw.ElapsedMilliseconds,
+                Step1Ms = step1Sw.ElapsedMilliseconds,
+                Step2Ms = step2Sw.ElapsedMilliseconds,
+                CandidateCount = candidateCount,
+                ScannedRecordCount = candidateItems.Count,
+                CollisionCount = Math.Max(0, candidateItems.Count - matchedItems.Count),
+                ResultCount = matchedItems.Count
+            };
 
+            IEnumerable<NhanVienDTO> query = matchedItems;
             query = ApplySortingPrivate(query, sortColumn, sortDirection);
 
             if (string.IsNullOrWhiteSpace(sortColumn))
-            {
                 query = query.OrderBy(x => x.Id_NV);
-            }
 
-            return query
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToList();
+            return query.Skip((page - 1) * pageSize).Take(pageSize).ToList();
         }
 
         public async Task<NhanVienDTO?> GetByIdPublicAsync(decimal id)
         {
-            var record = await _context.NhanViens
+            var row = await _context.NhanViens
                 .AsNoTracking()
-                .Where(x => x.Id_NV == id && (x.Disable == false || x.Disable == null))
-                .Select(x => new
-                {
-                    x.Id_NV,
-                    x.MaNV,
-                    x.Ngaysinh,
-                    x.I_Holot,
-                    x.I_Ten,
-                    x.I_CMND,
-                    x.Mobile,
-                    x.Email
-                })
-                .FirstOrDefaultAsync();
+                .FirstOrDefaultAsync(x => x.Id_NV == id && (x.Disable == false || x.Disable == null));
 
-            if (record == null)
-            {
-                return null;
-            }
-
-            return new NhanVienDTO
-            {
-                Id_NV = record.Id_NV,
-                MaNV = record.MaNV,
-                HoTen = $"{ToBase64Display(record.I_Holot)} {ToBase64Display(record.I_Ten)}".Trim(),
-                NgaySinh = record.Ngaysinh,
-                CMND = ToBase64Display(record.I_CMND),
-                Mobile = "*******",
-                Email = "*******"
-            };
+            return row == null ? null : ToPublicDto(row);
         }
 
         public async Task<NhanVienDTO?> GetByIdPrivateAsync(decimal id)
@@ -449,24 +279,22 @@ namespace HRM.Repositories
 
             cmd.Parameters.Add(new SqlParameter("@I_Holot", SqlDbType.VarBinary)
             {
-                Value = (object?)EncryptToDb(entity.Holot) ?? DBNull.Value
+                Value = (object?)EncryptToDbBytes(entity.Holot) ?? DBNull.Value
             });
 
             cmd.Parameters.Add(new SqlParameter("@I_Ten", SqlDbType.VarBinary)
             {
-                Value = (object?)EncryptToDb(entity.Ten) ?? DBNull.Value
+                Value = (object?)EncryptToDbBytes(entity.Ten) ?? DBNull.Value
             });
 
             cmd.Parameters.Add(new SqlParameter("@I_CMND", SqlDbType.VarBinary, 512)
             {
-                Value = (object?)EncryptToDb(entity.CMND) ?? DBNull.Value
+                Value = (object?)EncryptToDbBytes(NormalizeDigits(entity.CMND)) ?? DBNull.Value
             });
-
-            var cmndHash = SearchIndexToDb(entity.CMND, "CMND");
 
             cmd.Parameters.Add(new SqlParameter("@CMNDHash", SqlDbType.VarBinary, 32)
             {
-                Value = cmndHash
+                Value = (object?)SearchIndexToDbBytes(NormalizeDigits(entity.CMND), "CMND") ?? DBNull.Value
             });
 
             cmd.Parameters.Add(new SqlParameter("@Ngaysinh", SqlDbType.DateTime)
@@ -486,14 +314,12 @@ namespace HRM.Repositories
 
             cmd.Parameters.Add(new SqlParameter("@I_Sotaikhoan", SqlDbType.VarBinary, 512)
             {
-                Value = (object?)EncryptToDb(entity.Sotaikhoan) ?? DBNull.Value
+                Value = (object?)EncryptToDbBytes(entity.Sotaikhoan) ?? DBNull.Value
             });
-
-            var sotaikhoanHash = SearchIndexToDb(entity.Sotaikhoan, "Sotaikhoan");
 
             cmd.Parameters.Add(new SqlParameter("@SotaikhoanHash", SqlDbType.VarBinary, 32)
             {
-                Value = sotaikhoanHash
+                Value = (object?)SearchIndexToDbBytes(entity.Sotaikhoan, "Sotaikhoan") ?? DBNull.Value
             });
 
             cmd.Parameters.Add(new SqlParameter("@CreatedUser", SqlDbType.Decimal)
@@ -510,11 +336,7 @@ namespace HRM.Repositories
 
             var newId = Convert.ToDecimal(result);
 
-            await RebuildSecureIndexForNhanVienAsync(
-                (int)newId,
-                entity.Holot,
-                entity.Ten
-            );
+            await RebuildSecureIndexForNhanVienAsync((int)newId, entity.Holot, entity.Ten);
 
             return newId;
         }
@@ -545,24 +367,22 @@ namespace HRM.Repositories
 
             cmd.Parameters.Add(new SqlParameter("@I_Holot", SqlDbType.VarBinary)
             {
-                Value = (object?)EncryptToDb(entity.Holot) ?? DBNull.Value
+                Value = (object?)EncryptToDbBytes(entity.Holot) ?? DBNull.Value
             });
 
             cmd.Parameters.Add(new SqlParameter("@I_Ten", SqlDbType.VarBinary)
             {
-                Value = (object?)EncryptToDb(entity.Ten) ?? DBNull.Value
+                Value = (object?)EncryptToDbBytes(entity.Ten) ?? DBNull.Value
             });
 
             cmd.Parameters.Add(new SqlParameter("@I_CMND", SqlDbType.VarBinary, 512)
             {
-                Value = (object?)EncryptToDb(entity.CMND) ?? DBNull.Value
+                Value = (object?)EncryptToDbBytes(NormalizeDigits(entity.CMND)) ?? DBNull.Value
             });
-
-            var cmndHash = SearchIndexToDb(entity.CMND, "CMND");
 
             cmd.Parameters.Add(new SqlParameter("@CMNDHash", SqlDbType.VarBinary, 32)
             {
-                Value = cmndHash
+                Value = (object?)SearchIndexToDbBytes(NormalizeDigits(entity.CMND), "CMND") ?? DBNull.Value
             });
 
             cmd.Parameters.Add(new SqlParameter("@Ngaysinh", SqlDbType.DateTime)
@@ -582,14 +402,12 @@ namespace HRM.Repositories
 
             cmd.Parameters.Add(new SqlParameter("@I_Sotaikhoan", SqlDbType.VarBinary, 512)
             {
-                Value = (object?)EncryptToDb(entity.Sotaikhoan) ?? DBNull.Value
+                Value = (object?)EncryptToDbBytes(entity.Sotaikhoan) ?? DBNull.Value
             });
-
-            var sotaikhoanHash = SearchIndexToDb(entity.Sotaikhoan, "Sotaikhoan");
 
             cmd.Parameters.Add(new SqlParameter("@SotaikhoanHash", SqlDbType.VarBinary, 32)
             {
-                Value = sotaikhoanHash
+                Value = (object?)SearchIndexToDbBytes(entity.Sotaikhoan, "Sotaikhoan") ?? DBNull.Value
             });
 
             cmd.Parameters.Add(new SqlParameter("@LastModifiedUser", SqlDbType.Decimal)
@@ -601,11 +419,7 @@ namespace HRM.Repositories
 
             await cmd.ExecuteNonQueryAsync();
 
-            await RebuildSecureIndexForNhanVienAsync(
-                (int)entity.Id_NV,
-                entity.Holot,
-                entity.Ten
-            );
+            await RebuildSecureIndexForNhanVienAsync((int)entity.Id_NV, entity.Holot, entity.Ten);
         }
 
         public async Task SoftDeleteAsync(decimal id)
@@ -617,40 +431,15 @@ namespace HRM.Repositories
             await _context.SaveChangesAsync();
         }
 
-        private IEnumerable<NhanVienDTO> ApplySortingPrivate(
-            IEnumerable<NhanVienDTO> query,
-            string? sortColumn,
-            string? sortDirection
-        )
-        {
-            if (string.IsNullOrWhiteSpace(sortColumn))
-            {
-                return query;
-            }
-
-            var isDesc = sortDirection?.ToLower() == "desc";
-
-            return sortColumn switch
-            {
-                "ngaySinh" => isDesc
-                    ? query.OrderByDescending(x => x.NgaySinh)
-                    : query.OrderBy(x => x.NgaySinh),
-
-                _ => query
-            };
-        }
-
         private async Task<List<NhanVienDTO>> GetAllPrivateAsync()
         {
             var result = new List<NhanVienDTO>();
-
             var conn = _context.Database.GetDbConnection();
 
             if (conn.State != ConnectionState.Open)
                 await conn.OpenAsync();
 
             using var cmd = conn.CreateCommand();
-
             cmd.CommandText = "sp_Tbl_Nhanvien_GetAllEncrypted";
             cmd.CommandType = CommandType.StoredProcedure;
             cmd.CommandTimeout = 0;
@@ -659,36 +448,14 @@ namespace HRM.Repositories
 
             while (await reader.ReadAsync())
             {
-                var id = reader.GetDecimal(reader.GetOrdinal("Id_NV"));
-
-                try
-                {
-                    var holot = DecryptFromDb(reader["I_Holot"]);
-                    var ten = DecryptFromDb(reader["I_Ten"]);
-                    var cmnd = DecryptFromDb(reader["I_CMND"]);
-
-                    result.Add(new NhanVienDTO
-                    {
-                        Id_NV = id,
-                        MaNV = reader["MaNV"] as string,
-                        HoTen = $"{holot} {ten}".Trim(),
-                        NgaySinh = reader["Ngaysinh"] == DBNull.Value
-                            ? null
-                            : (DateTime?)reader["Ngaysinh"],
-                        CMND = cmnd,
-                        Mobile = reader["Mobile"] as string,
-                        Email = reader["Email"] as string
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Decrypt lỗi tại Id_NV = {id}. Lỗi: {ex.Message}");
-                    continue;
-                }
+                var dto = ReadPrivateDto(reader);
+                if (dto != null)
+                    result.Add(dto);
             }
 
             return result;
         }
+
         private async Task<List<NhanVienDTO>> GetPrivateByIdsAsync(IEnumerable<decimal> ids)
         {
             var idList = ids?.Distinct().ToList() ?? new List<decimal>();
@@ -702,64 +469,66 @@ namespace HRM.Repositories
                 await conn.OpenAsync();
 
             using var cmd = conn.CreateCommand();
-
             cmd.CommandText = "sp_Tbl_Nhanvien_GetByIds";
             cmd.CommandType = CommandType.StoredProcedure;
             cmd.CommandTimeout = 0;
-
             cmd.Parameters.Add(new SqlParameter("@Ids", string.Join(",", idList)));
 
             var result = new List<NhanVienDTO>();
-
             using var reader = await cmd.ExecuteReaderAsync();
 
             while (await reader.ReadAsync())
             {
-                var id = reader.GetDecimal(reader.GetOrdinal("Id_NV"));
-
-                try
-                {
-                    var holot = DecryptFromDb(reader["I_Holot"]);
-                    var ten = DecryptFromDb(reader["I_Ten"]);
-                    var cmnd = DecryptFromDb(reader["I_CMND"]);
-
-                    result.Add(new NhanVienDTO
-                    {
-                        Id_NV = id,
-                        MaNV = reader["MaNV"] as string,
-                        HoTen = $"{holot} {ten}".Trim(),
-                        NgaySinh = reader["Ngaysinh"] == DBNull.Value
-                            ? null
-                            : (DateTime?)reader["Ngaysinh"],
-                        CMND = cmnd,
-                        Mobile = reader["Mobile"] as string,
-                        Email = reader["Email"] as string
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Decrypt lỗi tại Id_NV = {id}. Lỗi: {ex.Message}");
-
-                    // Bỏ qua record lỗi để search không chết toàn bộ.
-                    // Sau đó dùng Id này để migrate/fix lại dữ liệu.
-                    continue;
-                }
+                var dto = ReadPrivateDto(reader);
+                if (dto != null)
+                    result.Add(dto);
             }
 
             return result;
         }
+
+        private NhanVienDTO? ReadPrivateDto(IDataRecord reader)
+        {
+            var id = Convert.ToDecimal(reader["Id_NV"]);
+
+            try
+            {
+                var holot = DecryptDbValue(reader["I_Holot"]);
+                var ten = DecryptDbValue(reader["I_Ten"]);
+                var cmnd = DecryptDbValue(reader["I_CMND"]);
+
+                return new NhanVienDTO
+                {
+                    Id_NV = id,
+                    MaNV = ReadString(reader, "MaNV"),
+                    HoTen = $"{holot} {ten}".Trim(),
+                    NgaySinh = ReadDateTime(reader, "Ngaysinh"),
+                    CMND = cmnd,
+                    Mobile = ReadString(reader, "Mobile"),
+                    Email = ReadString(reader, "Email")
+                };
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Decrypt lỗi tại Id_NV = {id}. Lỗi: {ex.Message}");
+                return null;
+            }
+        }
+
         private async Task<List<decimal>> FindIdsByCMNDHashAsync(string cmnd)
         {
             var result = new List<decimal>();
-            var hash = SearchIndexBytes(cmnd, "CMND");
+            var normalizedCmnd = NormalizeDigits(cmnd);
+            var hash = SearchIndexToDbBytes(normalizedCmnd, "CMND");
+
+            if (hash == null)
+                return result;
 
             var conn = _context.Database.GetDbConnection();
-
             if (conn.State != ConnectionState.Open)
                 await conn.OpenAsync();
 
             using var cmd = conn.CreateCommand();
-
             cmd.CommandText = "sp_Tbl_Nhanvien_FindIdsByCMNDHash";
             cmd.CommandType = CommandType.StoredProcedure;
 
@@ -769,44 +538,55 @@ namespace HRM.Repositories
             });
 
             using var reader = await cmd.ExecuteReaderAsync();
-
             while (await reader.ReadAsync())
             {
                 result.Add(Convert.ToDecimal(reader["Id_NV"]));
             }
 
-            return result;
+            return result.Distinct().ToList();
         }
-
 
         private async Task<List<decimal>> SearchCandidateIdsBySecureIndexAsync(string keyword)
         {
-            var grams = SecurityIndexHelper.BuildNgrams(keyword, 3);
+            var allIds = new List<decimal>();
+            var terms = BuildNameSearchTerms(keyword);
+
+            foreach (var term in terms)
+            {
+                var ids = await SearchCandidateIdsByNameTermAsync(term);
+                allIds.AddRange(ids);
+            }
+
+            return allIds.Distinct().ToList();
+        }
+
+        private async Task<List<decimal>> SearchCandidateIdsByNameTermAsync(string term)
+        {
+            var grams = BuildNgrams(term, 3);
 
             if (grams.Count == 0)
                 return new List<decimal>();
 
-            var hashes = grams
-                .Select(x => SearchIndexBytes(x, "HoTen:NGram"))
-                .ToList();
-
             var table = new DataTable();
             table.Columns.Add("HashValue", typeof(byte[]));
 
-            foreach (var hash in hashes)
+            foreach (var gram in grams)
             {
-                table.Rows.Add(hash);
+                var hash = SearchIndexToDbBytes(gram, "HoTenGram");
+                if (hash != null)
+                    table.Rows.Add(hash);
             }
 
-            var result = new List<decimal>();
+            if (table.Rows.Count == 0)
+                return new List<decimal>();
 
+            var result = new List<decimal>();
             var conn = _context.Database.GetDbConnection();
 
             if (conn.State != ConnectionState.Open)
                 await conn.OpenAsync();
 
             using var cmd = conn.CreateCommand();
-
             cmd.CommandText = "sp_SecureIndex_SearchCandidates";
             cmd.CommandType = CommandType.StoredProcedure;
 
@@ -820,23 +600,19 @@ namespace HRM.Repositories
                 Value = "HoTen"
             });
 
-            var tvpParam = new SqlParameter("@GramHashes", SqlDbType.Structured)
+            cmd.Parameters.Add(new SqlParameter("@GramHashes", SqlDbType.Structured)
             {
                 TypeName = "dbo.VarbinaryHashList",
                 Value = table
-            };
+            });
 
-            cmd.Parameters.Add(tvpParam);
-
-            var minMatch = Math.Max(1, (int)Math.Ceiling(hashes.Count * 0.7));
-
+            var minMatch = Math.Max(1, (int)Math.Ceiling(grams.Count * 0.35));
             cmd.Parameters.Add(new SqlParameter("@MinMatch", SqlDbType.Int)
             {
                 Value = minMatch
             });
 
             using var reader = await cmd.ExecuteReaderAsync();
-
             while (await reader.ReadAsync())
             {
                 result.Add(Convert.ToDecimal(reader["RecordId"]));
@@ -848,7 +624,6 @@ namespace HRM.Repositories
         private async Task RebuildSecureIndexForNhanVienAsync(int recordId, string? holot, string? ten)
         {
             var fullName = $"{holot} {ten}".Trim();
-
             var conn = _context.Database.GetDbConnection();
 
             if (conn.State != ConnectionState.Open)
@@ -858,32 +633,27 @@ namespace HRM.Repositories
             {
                 deleteCmd.CommandText = "sp_SecureIndex_DeleteByRecord";
                 deleteCmd.CommandType = CommandType.StoredProcedure;
-
                 deleteCmd.Parameters.Add(new SqlParameter("@RecordId", recordId));
                 deleteCmd.Parameters.Add(new SqlParameter("@TableName", "Tbl_Nhanvien"));
                 deleteCmd.Parameters.Add(new SqlParameter("@ColumnName", "HoTen"));
-
                 await deleteCmd.ExecuteNonQueryAsync();
             }
 
-            var grams = SecurityIndexHelper.BuildNgrams(fullName, 3);
+            var grams = BuildNgrams(fullName, 3);
 
             for (int i = 0; i < grams.Count; i++)
             {
                 using var insertCmd = conn.CreateCommand();
-
                 insertCmd.CommandText = "sp_SecureIndex_Insert";
                 insertCmd.CommandType = CommandType.StoredProcedure;
 
                 insertCmd.Parameters.Add(new SqlParameter("@RecordId", recordId));
                 insertCmd.Parameters.Add(new SqlParameter("@TableName", "Tbl_Nhanvien"));
                 insertCmd.Parameters.Add(new SqlParameter("@ColumnName", "HoTen"));
-
                 insertCmd.Parameters.Add(new SqlParameter("@GramHash", SqlDbType.VarBinary, 32)
                 {
-                    Value = SearchIndexBytes(grams[i], "HoTen:NGram")
+                    Value = SearchIndexToDbBytes(grams[i], "HoTenGram") ?? Array.Empty<byte>()
                 });
-
                 insertCmd.Parameters.Add(new SqlParameter("@Position", SqlDbType.Int)
                 {
                     Value = i
@@ -895,20 +665,8 @@ namespace HRM.Repositories
 
         private async Task<List<NhanVienDTO>> GetAllForRebuildIndexAsync()
         {
-            return await _context.NhanViens
-                .AsNoTracking()
-                .Where(x => x.Disable == false || x.Disable == null)
-                .Select(x => new NhanVienDTO
-                {
-                    Id_NV = x.Id_NV,
-                    MaNV = x.MaNV,
-                    HoTen = ((x.Holot ?? "") + " " + (x.Ten ?? "")).Trim(),
-                    NgaySinh = x.Ngaysinh,
-                    CMND = x.CMND,
-                    Mobile = x.Mobile,
-                    Email = x.Email
-                })
-                .ToListAsync();
+            // Rebuild index phải dựa trên dữ liệu đã giải mã, không dùng Holot/Ten plaintext cũ.
+            return await GetAllPrivateAsync();
         }
 
         public async Task RebuildAllSecureIndexBulkAsync(int batchSize = 1000)
@@ -933,14 +691,12 @@ namespace HRM.Repositories
             foreach (var batch in batches)
             {
                 batchNo++;
-
                 using var transaction = conn.BeginTransaction();
 
                 try
                 {
                     var idList = batch.Select(x => Convert.ToInt32(x.Id_NV)).ToList();
 
-                    // 1) Xóa SecureIndex cũ của batch hiện tại
                     using (var deleteCmd = conn.CreateCommand())
                     {
                         deleteCmd.Transaction = transaction;
@@ -966,7 +722,6 @@ namespace HRM.Repositories
                         await deleteCmd.ExecuteNonQueryAsync();
                     }
 
-                    // 2) Tạo DataTable chứa n-gram hash để bulk insert
                     var table = new DataTable();
                     table.Columns.Add("RecordId", typeof(int));
                     table.Columns.Add("TableName", typeof(string));
@@ -981,21 +736,24 @@ namespace HRM.Repositories
                         if (string.IsNullOrWhiteSpace(fullName))
                             continue;
 
-                        var grams = SecurityIndexHelper.BuildNgrams(fullName, 3);
+                        var grams = BuildNgrams(fullName, 3);
 
                         for (int i = 0; i < grams.Count; i++)
                         {
+                            var hash = SearchIndexToDbBytes(grams[i], "HoTenGram");
+                            if (hash == null)
+                                continue;
+
                             table.Rows.Add(
                                 Convert.ToInt32(item.Id_NV),
                                 "Tbl_Nhanvien",
                                 "HoTen",
-                                SearchIndexBytes(grams[i], "HoTen:NGram"),
+                                hash,
                                 i
                             );
                         }
                     }
 
-                    // 3) Bulk insert SecureIndex mới của batch hiện tại
                     if (table.Rows.Count > 0)
                     {
                         using var bulk = new SqlBulkCopy(conn, SqlBulkCopyOptions.Default, transaction);
@@ -1014,9 +772,7 @@ namespace HRM.Repositories
 
                     transaction.Commit();
 
-                    Console.WriteLine(
-                        $"Batch {batchNo}/{batches.Count} done. Records: {batch.Count}, SecureIndex rows: {table.Rows.Count}"
-                    );
+                    Console.WriteLine($"Batch {batchNo}/{batches.Count} done. Records: {batch.Count}, SecureIndex rows: {table.Rows.Count}");
                 }
                 catch
                 {
@@ -1026,18 +782,13 @@ namespace HRM.Repositories
             }
         }
 
-
         public async Task MigrateOldPlaintextDataAsync()
         {
             var rows = await _context.NhanViens
                 .AsNoTracking()
                 .Where(x =>
                     (x.Disable == false || x.Disable == null) &&
-                    (
-                        x.Holot != null ||
-                        x.Ten != null ||
-                        x.CMND != null
-                    )
+                    (x.Holot != null || x.Ten != null || x.CMND != null)
                 )
                 .Select(x => new
                 {
@@ -1057,7 +808,6 @@ namespace HRM.Repositories
             foreach (var row in rows)
             {
                 using var cmd = conn.CreateCommand();
-
                 cmd.CommandText = "sp_Tbl_Nhanvien_MigrateEncrypted";
                 cmd.CommandType = CommandType.StoredProcedure;
                 cmd.CommandTimeout = 0;
@@ -1071,40 +821,234 @@ namespace HRM.Repositories
 
                 cmd.Parameters.Add(new SqlParameter("@I_Holot", SqlDbType.VarBinary)
                 {
-                    Value = (object?)EncryptToDb(row.Holot) ?? DBNull.Value
+                    Value = (object?)EncryptToDbBytes(row.Holot) ?? DBNull.Value
                 });
 
                 cmd.Parameters.Add(new SqlParameter("@I_Ten", SqlDbType.VarBinary)
                 {
-                    Value = (object?)EncryptToDb(row.Ten) ?? DBNull.Value
+                    Value = (object?)EncryptToDbBytes(row.Ten) ?? DBNull.Value
                 });
 
                 cmd.Parameters.Add(new SqlParameter("@I_CMND", SqlDbType.VarBinary, 512)
                 {
-                    Value = (object?)EncryptToDb(row.CMND) ?? DBNull.Value
+                    Value = (object?)EncryptToDbBytes(NormalizeDigits(row.CMND)) ?? DBNull.Value
                 });
-
-                var cmndHash = SearchIndexToDb(row.CMND, "CMND");
 
                 cmd.Parameters.Add(new SqlParameter("@CMNDHash", SqlDbType.VarBinary, 32)
                 {
-                    Value = cmndHash
+                    Value = (object?)SearchIndexToDbBytes(NormalizeDigits(row.CMND), "CMND") ?? DBNull.Value
                 });
 
                 cmd.Parameters.Add(new SqlParameter("@I_Sotaikhoan", SqlDbType.VarBinary, 512)
                 {
-                    Value = (object?)EncryptToDb(row.Sotaikhoan) ?? DBNull.Value
+                    Value = (object?)EncryptToDbBytes(row.Sotaikhoan) ?? DBNull.Value
                 });
-
-                var sotaikhoanHash = SearchIndexToDb(row.Sotaikhoan, "Sotaikhoan");
 
                 cmd.Parameters.Add(new SqlParameter("@SotaikhoanHash", SqlDbType.VarBinary, 32)
                 {
-                    Value = sotaikhoanHash
+                    Value = (object?)SearchIndexToDbBytes(row.Sotaikhoan, "Sotaikhoan") ?? DBNull.Value
                 });
 
                 await cmd.ExecuteNonQueryAsync();
             }
+        }
+
+        private NhanVienDTO ToPublicDto(NhanVien x)
+        {
+            return new NhanVienDTO
+            {
+                Id_NV = x.Id_NV,
+                MaNV = x.MaNV,
+                HoTen = $"{ToEncryptedDisplay(x.I_Holot)} {ToEncryptedDisplay(x.I_Ten)}".Trim(),
+                NgaySinh = x.Ngaysinh,
+                CMND = ToEncryptedDisplay(x.I_CMND),
+                Mobile = x.Mobile,
+                Email = x.Email
+            };
+        }
+
+        private static string? ReadString(IDataRecord reader, string columnName)
+        {
+            var value = reader[columnName];
+            return value == DBNull.Value ? null : value?.ToString();
+        }
+
+        private static DateTime? ReadDateTime(IDataRecord reader, string columnName)
+        {
+            var value = reader[columnName];
+            return value == DBNull.Value ? null : Convert.ToDateTime(value);
+        }
+
+        private string? DecryptDbValue(object? dbValue)
+        {
+            if (dbValue == null || dbValue == DBNull.Value)
+                return null;
+
+            // DB hiện tại là varbinary. Nếu sau này DB đổi sang nvarchar thì vẫn hỗ trợ string.
+            if (dbValue is byte[] bytes)
+            {
+                if (bytes.Length == 0)
+                    return null;
+
+                return _securityService.DecryptData(Convert.ToBase64String(bytes));
+            }
+
+            return _securityService.DecryptData(dbValue.ToString() ?? string.Empty);
+        }
+
+        private byte[]? EncryptToDbBytes(string? rawData)
+        {
+            if (string.IsNullOrWhiteSpace(rawData))
+                return null;
+
+            var encryptedText = _securityService.EncryptData(rawData);
+            return TextToBytes(encryptedText);
+        }
+
+        private byte[]? SearchIndexToDbBytes(string? rawData, string columnProfile)
+        {
+            if (string.IsNullOrWhiteSpace(rawData))
+                return null;
+
+            var indexText = _securityService.GenerateSearchIndex(rawData, columnProfile);
+            return TextToBytes(indexText);
+        }
+
+        private static byte[]? TextToBytes(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return null;
+
+            try
+            {
+                return Convert.FromBase64String(text);
+            }
+            catch
+            {
+                return Encoding.UTF8.GetBytes(text);
+            }
+        }
+
+        private static string ToEncryptedDisplay(byte[]? bytes)
+        {
+            if (bytes == null || bytes.Length == 0)
+                return "****";
+
+            var base64 = Convert.ToBase64String(bytes);
+            return base64.Length <= 24 ? base64 : base64.Substring(0, 24) + "...";
+        }
+
+        private static bool MatchesSearchKeyword(NhanVienDTO item, string keyword)
+        {
+            if (string.IsNullOrWhiteSpace(keyword))
+                return true;
+
+            if (IsCmndKeyword(keyword))
+                return SameDigits(item.CMND, keyword);
+
+            return ContainsName(item.HoTen, keyword);
+        }
+
+        private static bool IsCmndKeyword(string keyword)
+        {
+            var digits = NormalizeDigits(keyword);
+
+            return digits.Length >= 9 &&
+                   keyword.All(c => char.IsDigit(c) || char.IsWhiteSpace(c) || c == '-' || c == '.');
+        }
+
+        private static string NormalizeDigits(string? input)
+        {
+            if (string.IsNullOrWhiteSpace(input))
+                return string.Empty;
+
+            return Regex.Replace(input, @"\D", string.Empty);
+        }
+
+        private static bool SameDigits(string? source, string keyword)
+        {
+            var sourceDigits = NormalizeDigits(source);
+            var keywordDigits = NormalizeDigits(keyword);
+
+            return !string.IsNullOrWhiteSpace(keywordDigits) && sourceDigits == keywordDigits;
+        }
+
+        private static bool ContainsName(string? source, string keyword)
+        {
+            var sourceNorm = NormalizeVietnameseText(source);
+            var keywordNorm = NormalizeVietnameseText(keyword);
+
+            if (string.IsNullOrWhiteSpace(sourceNorm) || string.IsNullOrWhiteSpace(keywordNorm))
+                return false;
+
+            return sourceNorm.Contains(keywordNorm);
+        }
+
+        private static string NormalizeVietnameseText(string? input)
+        {
+            if (string.IsNullOrWhiteSpace(input))
+                return string.Empty;
+
+            var text = Regex.Replace(input.Trim().ToLowerInvariant(), @"\s+", " ");
+            text = text.Normalize(NormalizationForm.FormD);
+
+            var sb = new StringBuilder();
+            foreach (var c in text)
+            {
+                var category = CharUnicodeInfo.GetUnicodeCategory(c);
+                if (category != UnicodeCategory.NonSpacingMark)
+                    sb.Append(c);
+            }
+
+            text = sb.ToString().Normalize(NormalizationForm.FormC);
+            text = text.Replace('đ', 'd');
+            text = Regex.Replace(text, @"\s+", " ");
+
+            return text.Trim();
+        }
+
+        private static string NormalizeForIndex(string? input)
+        {
+            if (string.IsNullOrWhiteSpace(input))
+                return string.Empty;
+
+            return Regex.Replace(input.Trim().ToLowerInvariant(), @"\s+", " ").Trim();
+        }
+
+        private static List<string> BuildNameSearchTerms(string keyword)
+        {
+            var normalized = NormalizeForIndex(keyword);
+            var terms = new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(normalized))
+                terms.Add(normalized);
+
+            terms.AddRange(
+                normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                    .Where(x => x.Length >= 2)
+            );
+
+            return terms.Distinct().ToList();
+        }
+
+        private static List<string> BuildNgrams(string value, int n = 3)
+        {
+            var normalized = NormalizeForIndex(value);
+            var grams = new List<string>();
+
+            if (string.IsNullOrEmpty(normalized))
+                return grams;
+
+            if (normalized.Length < n)
+            {
+                grams.Add(normalized);
+                return grams;
+            }
+
+            for (int i = 0; i <= normalized.Length - n; i++)
+                grams.Add(normalized.Substring(i, n));
+
+            return grams.Distinct().ToList();
         }
     }
 }

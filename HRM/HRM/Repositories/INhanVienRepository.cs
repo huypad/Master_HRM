@@ -1,10 +1,14 @@
-﻿using HRM.DTOs;
+using HRM.DTOs;
 using HRM.Entities;
+using HRM.Model;
 
 namespace HRM.Repositories
 {
     public interface INhanVienRepository
     {
+        SearchDebugInfo? LastSearchDebug { get; }
+        int LastSearchTotal { get; }
+
         Task<int> CountPublicAsync();
         Task<int> CountPrivateAsync();
 
