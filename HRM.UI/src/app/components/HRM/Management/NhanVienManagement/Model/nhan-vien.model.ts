@@ -20,6 +20,20 @@ export interface NhanVienModel {
   sotaikhoan?: string;
 }
 
+export interface SearchDebugInfo {
+  searchKeyword?: string;
+  searchType?: string;
+  decryptedValue?: string;
+  compareResult?: string;
+  totalMs?: number;
+  step1Ms?: number;
+  step2Ms?: number;
+  candidateCount?: number;
+  scannedRecordCount?: number;
+  collisionCount?: number;
+  resultCount?: number;
+}
+
 export interface TableState {
   paginator: {
     pageIndex: number;

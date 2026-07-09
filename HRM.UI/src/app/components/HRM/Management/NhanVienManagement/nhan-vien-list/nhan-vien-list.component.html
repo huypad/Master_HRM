@@ -70,6 +70,36 @@
     </div>
     <!-- end: Filtration form -->
 
+    <!-- Search tracking -->
+    <div *ngIf="searchDebug && searchKeyword" class="row ml-4 mr-4 mb-4">
+      <div class="col-lg-12">
+        <div class="p-4 border rounded bg-light">
+          <div class="font-weight-bold mb-2">Theo dõi quá trình tìm kiếm trên dữ liệu mã hóa</div>
+          <div><b>Dữ liệu cần tìm:</b> {{ searchDebug.searchKeyword || searchKeyword }}</div>
+          <div><b>Loại tìm kiếm:</b> {{ searchDebug.searchType || 'Họ tên / CMND' }}</div>
+          <div><b>Dữ liệu mẫu sau giải mã (Bản ghi đầu tiên):</b> {{ searchDebug.decryptedValue || 'Không có dữ liệu khớp' }}</div>
+          <div>
+            <b>Kết quả so sánh:</b>
+            <span
+              [ngClass]="{
+                'text-success': searchDebug.compareResult === 'Khớp',
+                'text-danger': searchDebug.compareResult !== 'Khớp'
+              }"
+            >
+              {{ searchDebug.compareResult || 'Không khớp' }}
+            </span>
+          </div>
+          <div><b>Thời gian tìm kiếm:</b> {{ searchDebug.totalMs || 0 }}ms</div>
+          <div><b>Thời gian bước 1 - lọc hash/index:</b> {{ searchDebug.step1Ms || 0 }}ms</div>
+          <div><b>Thời gian bước 2 - giải mã và so sánh:</b> {{ searchDebug.step2Ms || 0 }}ms</div>
+          <div><b>Số candidate từ DB:</b> {{ searchDebug.candidateCount || 0 }}</div>
+          <div><b>Số bản ghi quét/giải mã:</b> {{ searchDebug.scannedRecordCount || 0 }}</div>
+          <div><b>Số bản ghi loại sau so sánh:</b> {{ searchDebug.collisionCount || 0 }}</div>
+          <div><b>Số kết quả tìm thấy:</b> {{ searchDebug.resultCount || paginator.total }}</div>
+        </div>
+      </div>
+    </div>
+
     <!-- table -->
     <div
       class="table-responsive angular-bootstrap-table"

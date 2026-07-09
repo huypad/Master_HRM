@@ -55,6 +55,7 @@ namespace HRM.Controllers
                 return Ok(data);
             }
 
+            // Khi có keyword thì luôn trả kết quả đã giải mã, kể cả người dùng đang ở màn hình Public/Admin.
             var result = isPrivate
                 ? await _service.SearchPrivateAsync(keyword, page, pageSize, sortColumn, sortDirection)
                 : await _service.SearchPublicAsync(keyword, page, pageSize, sortColumn, sortDirection);
@@ -62,7 +63,8 @@ namespace HRM.Controllers
             return Ok(new
             {
                 items = result.Items,
-                total = result.Total
+                total = result.Total,
+                searchDebug = result.SearchDebug
             });
         }
 

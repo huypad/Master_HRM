@@ -1,66 +1,78 @@
-export interface LoginModel {
-  username: string;
-  password: string;
-}
-
 export interface UserDTO {
+  id?: number;
+  userId?: number;
   username: string;
+  userName?: string;
   firstname: string;
   lastname: string;
-  isMasterAccount: boolean;
-
-  id?: number | string;
-  userId?: number | string;
   fullName?: string;
   email?: string;
-  phone?: string;
+  phoneNumber?: string;
   avatar?: string;
+  role?: string;
   token?: string;
-  accessToken?: string;
-  refreshToken?: string;
-  roles?: string[];
-  permissions?: string[];
-  expiresIn?: number;
-  expiration?: string | Date;
-  lastLogin?: string | Date;
-  status?: boolean | number | string;
-
-  [key: string]: any;
+  isMasterAccount: boolean;
 }
 
-export interface User extends UserDTO {}
+export interface LoginModel {
+  username?: string;
+  userName?: string;
+  email?: string;
+  password?: string;
+  rememberMe?: boolean;
+}
 
-export class UserModel implements UserDTO {
-  username: string = '';
-  firstname: string = '';
-  lastname: string = '';
-  isMasterAccount: boolean = false;
-
-  id?: number | string;
-  userId?: number | string;
+export interface User {
+  id?: number;
+  username: string;
+  userName?: string;
+  firstname: string;
+  lastname: string;
   fullName?: string;
   email?: string;
-  phone?: string;
   avatar?: string;
+  role?: string;
+  isMasterAccount: boolean;
+}
+
+export class UserModel {
+  id?: number;
+  username = '';
+  userName?: string;
+  firstname = '';
+  lastname = '';
+  fullName?: string;
+  email?: string;
+  avatar?: string;
+  role?: string;
   token?: string;
-  accessToken?: string;
-  refreshToken?: string;
-  roles?: string[];
-  permissions?: string[];
-  expiresIn?: number;
-  expiration?: string | Date;
-  lastLogin?: string | Date;
-  status?: boolean | number | string;
+  isMasterAccount = false;
 
-  [key: string]: any;
+  user: User = {
+    username: '',
+    firstname: '',
+    lastname: '',
+    isMasterAccount: false,
+  };
 
-  constructor(init?: Partial<UserDTO>) {
+  constructor(init?: Partial<UserModel>) {
     Object.assign(this, init);
 
-    if ((!this.firstname || !this.lastname) && this.fullName) {
-      const parts = this.fullName.trim().split(/\s+/);
-      this.firstname = this.firstname || parts[0] || '';
-      this.lastname = this.lastname || parts.slice(1).join(' ');
-    }
+    this.username = this.username || this.userName || this.user?.username || '';
+    this.firstname = this.firstname || this.user?.firstname || '';
+    this.lastname = this.lastname || this.user?.lastname || '';
+    this.isMasterAccount = this.isMasterAccount ?? this.user?.isMasterAccount ?? false;
+
+    this.user = {
+      username: this.user?.username || this.username || '',
+      userName: this.user?.userName || this.userName,
+      firstname: this.user?.firstname || this.firstname || '',
+      lastname: this.user?.lastname || this.lastname || '',
+      fullName: this.user?.fullName || this.fullName,
+      email: this.user?.email || this.email,
+      avatar: this.user?.avatar || this.avatar,
+      role: this.user?.role || this.role,
+      isMasterAccount: this.user?.isMasterAccount ?? this.isMasterAccount ?? false,
+    };
   }
 }

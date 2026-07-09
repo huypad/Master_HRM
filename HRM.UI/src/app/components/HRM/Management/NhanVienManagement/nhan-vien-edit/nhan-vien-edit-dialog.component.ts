@@ -131,6 +131,9 @@ export class NhanVienEditDialogComponent implements OnInit, OnDestroy {
   }
 
   onSaveAndContinue(): void {
+    if (this.isLoadingSubmit$.value) {
+      return;
+    }
     if (!this.prepareSave()) {
       return;
     }
@@ -183,6 +186,9 @@ export class NhanVienEditDialogComponent implements OnInit, OnDestroy {
   }
 
   onSaveAndClose(): void {
+    if (this.isLoadingSubmit$.value) {
+      return;
+    }
     if (!this.prepareSave()) {
       return;
     }
