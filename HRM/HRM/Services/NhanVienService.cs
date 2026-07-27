@@ -3,16 +3,19 @@ using HRM.Entities;
 using HRM.Model;
 using HRM.Model.NhanVien;
 using HRM.Repositories;
+using Microsoft.Extensions.Logging; 
 
 namespace HRM.Services
 {
     public class NhanVienService : INhanVienService
     {
         private readonly INhanVienRepository _repo;
+        private readonly ILogger<NhanVienService> _logger;
 
-        public NhanVienService(INhanVienRepository repo)
+        public NhanVienService(INhanVienRepository repo, ILogger<NhanVienService> logger)
         {
             _repo = repo;
+            _logger = logger;
         }
 
         public async Task<object> GetPagedPublicAsync(
@@ -28,8 +31,7 @@ namespace HRM.Services
             return new
             {
                 items,
-                total,
-                searchDebug = (SearchDebugInfo?)null
+                total
             };
         }
 
@@ -46,8 +48,7 @@ namespace HRM.Services
             return new
             {
                 items,
-                total,
-                searchDebug = (SearchDebugInfo?)null
+                total
             };
         }
 
@@ -59,27 +60,23 @@ namespace HRM.Services
             string? sortDirection
         )
         {
-            var items = await _repo.SearchPublicAsync(keyword, page, pageSize, sortColumn, sortDirection);
+        // Phase 1: DB Query (plaintext - không có decrypt)
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var items = await _repo.SearchPublicAsync(keyword, page, pageSize, sortColumn, sortDirection);
+        var phase1Ms = sw.ElapsedMilliseconds;
 
-            var debug = _repo.LastSearchDebug;
-            if (debug != null)
-            {
-                Console.WriteLine($"\n========================================");
-                Console.WriteLine($"[LOG JMETER] API: SearchPublicAsync (200k data)");
-                Console.WriteLine($"- Thời gian lọc thô (B1): {debug.Step1Ms} ms");
-                Console.WriteLine($"- Thời gian giải mã & lọc tinh (B2): {debug.Step2Ms} ms");
-                Console.WriteLine($"- Tổng thời gian: {debug.TotalMs} ms");
-                Console.WriteLine($"- Số lượng ứng viên: {debug.CandidateCount} dòng");
-                Console.WriteLine($"- Đụng độ: {debug.CollisionCount} bản ghi");
-                Console.WriteLine($"========================================\n");
-            }
+        // Phase 2: Count (đếm log)
+        sw.Restart();
+        var total = await _repo.CountSearchPublicAsync(keyword);
+        var phase2Ms = sw.ElapsedMilliseconds;
 
-            return new PagedResult<NhanVienDTO>
-            {
-                Items = items,
-                Total = _repo.LastSearchTotal,
-                SearchDebug = debug
-            };
+        int collisionCount = total - items.Count;
+
+        _logger.LogInformation(
+            "[PUBLIC SEARCH] Keyword={Keyword} | Phase1_DBQuery={P1}ms | Phase2_Count={P2}ms | Collisions={Collisions} | Results={Results}",
+            keyword, phase1Ms, phase2Ms, collisionCount, items.Count);
+
+        return new PagedResult<NhanVienDTO> { Items = items, Total = total };
         }
 
         public async Task<PagedResult<NhanVienDTO>> SearchPrivateAsync(
@@ -90,27 +87,53 @@ namespace HRM.Services
             string? sortDirection
         )
         {
-            var items = await _repo.SearchPrivateAsync(keyword, page, pageSize, sortColumn, sortDirection);
+        keyword = keyword.Trim();
+        var sw = new System.Diagnostics.Stopwatch();
 
-            var debug = _repo.LastSearchDebug;
-            if (debug != null)
-            {
-                Console.WriteLine($"\n========================================");
-                Console.WriteLine($"[LOG JMETER] API: SearchPrivateAsync (200k data)");
-                Console.WriteLine($"- Thời gian lọc thô (B1): {debug.Step1Ms} ms");
-                Console.WriteLine($"- Thời gian giải mã & lọc tinh (B2): {debug.Step2Ms} ms");
-                Console.WriteLine($"- Tổng thời gian: {debug.TotalMs} ms");
-                Console.WriteLine($"- Số lượng ứng viên: {debug.CandidateCount} dòng");
-                Console.WriteLine($"- Đụng độ: {debug.CollisionCount} bản ghi");
-                Console.WriteLine($"========================================\n");
-            }
+        // Phase 1: Querying over encrypted data (SecureIndex n-gram)
+        sw.Restart();
+        var candidateIds = await _repo.SearchCandidateIdsBySecureIndexAsync(keyword);
+        if (!string.IsNullOrWhiteSpace(keyword) && keyword.All(char.IsDigit))
+        {
+            var exactIds = await _repo.FindIdsByCMNDHashAsync(keyword);
+            candidateIds = candidateIds.Union(exactIds).Distinct().ToList();
+        }
+        var phase1Ms = sw.ElapsedMilliseconds;
 
-            return new PagedResult<NhanVienDTO>
-            {
-                Items = items,
-                Total = _repo.LastSearchTotal,
-                SearchDebug = debug
-            };
+        // Phase 2: Decryption
+        sw.Restart();
+        var candidateItems = await _repo.GetPrivateByIdsAsync(candidateIds);
+        var phase2Ms = sw.ElapsedMilliseconds;
+
+        // Phase 3: Filter results (in-memory)
+        sw.Restart();
+        var normalizedKeyword = keyword.ToLowerInvariant();
+        IEnumerable<NhanVienDTO> query = candidateItems.Where(x =>
+            ((x.MaNV  ?? "").ToLower().Contains(normalizedKeyword)) ||
+            ((x.HoTen ?? "").ToLower().Contains(normalizedKeyword)) ||
+            ((x.CMND  ?? "").Contains(keyword))                     ||
+            ((x.Mobile?? "").Contains(keyword))                     ||
+            ((x.Email ?? "").ToLower().Contains(normalizedKeyword))
+        );
+        query = ApplySortingPrivate(query, sortColumn, sortDirection);
+        if (string.IsNullOrWhiteSpace(sortColumn))
+            query = query.OrderBy(x => x.Id_NV);
+
+        var filtered = query.ToList();
+        var phase3Ms = sw.ElapsedMilliseconds;
+
+        int collisionCount = candidateIds.Count - filtered.Count;
+
+        _logger.LogInformation(
+            "[PRIVATE SEARCH] Keyword={Keyword} | Phase1_EncryptedQuery={P1}ms | Phase2_Decryption={P2}ms | Phase3_Filter={P3}ms | Candidates={Candidates} | Collisions={Collisions} | Results={Results}",
+            keyword, phase1Ms, phase2Ms, phase3Ms, candidateIds.Count, collisionCount, filtered.Count);
+
+        var paged = filtered
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+
+        return new PagedResult<NhanVienDTO> { Items = paged, Total = filtered.Count };
         }
 
         public async Task<NhanVienDTO?> GetByIdPublicAsync(decimal id)
@@ -120,6 +143,8 @@ namespace HRM.Services
 
         public async Task<NhanVienDTO?> GetByIdPrivateAsync(decimal id)
         {
+            // Repository đã decrypt và trả về NhanVienDTO rồi,
+            // service không cần ghép Holot/Ten hay decrypt lại.
             return await _repo.GetByIdPrivateAsync(id);
         }
 
@@ -136,6 +161,9 @@ namespace HRM.Services
                 Email = dto.Email,
                 Disable = false
             };
+
+            // Nếu model có số tài khoản thì bật dòng này.
+            // nv.Sotaikhoan = dto.Sotaikhoan;
 
             return await _repo.AddAsync(nv);
         }
@@ -159,6 +187,9 @@ namespace HRM.Services
                 Disable = false
             };
 
+            // Nếu model có số tài khoản thì bật dòng này.
+            // nv.Sotaikhoan = dto.Sotaikhoan;
+
             await _repo.UpdateAsync(nv);
             return true;
         }
@@ -181,6 +212,28 @@ namespace HRM.Services
         public async Task MigrateOldPlaintextDataAsync()
         {
             await _repo.MigrateOldPlaintextDataAsync();
+        }
+
+        private IEnumerable<NhanVienDTO> ApplySortingPrivate(
+            IEnumerable<NhanVienDTO> query,
+            string? sortColumn,
+            string? sortDirection)
+        {
+            if (string.IsNullOrWhiteSpace(sortColumn))
+                return query;
+
+            bool isDesc = string.Equals(sortDirection, "desc", StringComparison.OrdinalIgnoreCase);
+
+            return sortColumn.ToLower() switch
+            {
+                "manv"      => isDesc ? query.OrderByDescending(x => x.MaNV)      : query.OrderBy(x => x.MaNV),
+                "hoten"     => isDesc ? query.OrderByDescending(x => x.HoTen)     : query.OrderBy(x => x.HoTen),
+                "cmnd"      => isDesc ? query.OrderByDescending(x => x.CMND)      : query.OrderBy(x => x.CMND),
+                "mobile"    => isDesc ? query.OrderByDescending(x => x.Mobile)    : query.OrderBy(x => x.Mobile),
+                "email"     => isDesc ? query.OrderByDescending(x => x.Email)     : query.OrderBy(x => x.Email),
+                "ngaysinh"  => isDesc ? query.OrderByDescending(x => x.NgaySinh)  : query.OrderBy(x => x.NgaySinh),
+                _           => query
+            };
         }
     }
 }
