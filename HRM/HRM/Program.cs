@@ -13,6 +13,9 @@ builder.Services.AddScoped<HRM.Helpers.Security.ISecurityService, HRM.Helpers.Se
 builder.Services.AddScoped<INhanVienRepository, NhanVienRepository>();
 builder.Services.AddScoped<INhanVienService, NhanVienService>();
 builder.Services.AddScoped<HRM.Services.ISecurityService, HRM.Services.SecurityService>();
+builder.Services.AddScoped<HRM.Security.IHybridSecurityService, HRM.Security.RealSecurityService>();
+builder.Services.AddScoped<HRM.Services.IPatientSearchService, HRM.Services.PatientSearchService>();
+builder.Services.AddScoped<HRM.Services.IPatientService, HRM.Services.PatientService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
