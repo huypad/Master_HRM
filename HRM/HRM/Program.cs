@@ -13,13 +13,18 @@ builder.Services.AddScoped<ISecurityService, MockSecurityService>();
 builder.Services.AddScoped<INhanVienRepository, NhanVienRepository>();
 builder.Services.AddScoped<INhanVienService, NhanVienService>();
 
+// Healthcare DB & Benchmark Services
+builder.Services.AddScoped<IRealSecurityService, RealSecurityService>();
+builder.Services.AddScoped<PatientSearchService>();
+builder.Services.AddScoped<PatientService>();
+
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new()
     {
-        Title = "HRM Backend",
+        Title = "Healthcare & HRM API Benchmark",
         Version = "v1"
     });
 });
