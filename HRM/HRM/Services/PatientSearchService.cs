@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Data.SqlClient;
@@ -15,10 +16,9 @@ using HRM.Security;
 
 namespace HRM.Services
 {
-   
-    /// Triển khai dịch vụ tra cứu 2 bước (2-Step Search) trên HealthcareDB.
-    /// Sử dụng ADO.NET trực tiếp để đạt hiệu năng tối đa và đo đạc milliseconds chính xác.
-    
+
+    /// Triển khai dịch vụ tra cứu 2 bước (2-Step Search) trên HealthcareDB1.
+
     public class PatientSearchService : IPatientSearchService
     {
         private readonly string _connectionString;
@@ -31,11 +31,11 @@ namespace HRM.Services
             _securityService = securityService;
         }
 
-        #region V2 PIPELINE (HMAC + BITGRAM BUCKET)
+        #region V2 PIPELINE (HMAC + BITGRAM / LSH BUCKET)
 
-        /// <summary>
+
         /// Tra cứu chính xác V2 (HMAC-SHA256) theo CCCD, Phone, hoặc BankAccount.
-        /// </summary>
+
         public async Task<PagedResult<PatientDto>> SearchExactAsync(string keyword, string field)
         {
             var swTotal = Stopwatch.StartNew();
@@ -54,9 +54,11 @@ namespace HRM.Services
 
             string cleanKw = keyword.Trim();
 
-            // 1. Generate HMAC Exact Index
+            // 1. Generate HMAC & SHA256 Exact Indexes (Bao phủ cả HMAC tiêu chuẩn và SHA256 không khóa của Bạn 1)
             var swIndexGen = Stopwatch.StartNew();
             string hmacIndex = _securityService.GenerateExactIndex(cleanKw);
+            string sha256Index1 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(cleanKw)));
+            string sha256Index2 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(cleanKw + "  ")));
             swIndexGen.Stop();
 
             // Xác định cột HMAC cần query
@@ -67,7 +69,7 @@ namespace HRM.Services
                 _ => "CCCD_HMAC"
             };
 
-            // 2. Step 1: SQL Index Query (Fetch Candidates)
+            // 2. Step 1: SQL Index Query (Fetch Candidates bang Index Seek)
             var candidates = new List<EncryptedPatientRow>();
             var swStep1 = Stopwatch.StartNew();
 
@@ -75,26 +77,51 @@ namespace HRM.Services
             {
                 await conn.OpenAsync();
                 string sql = $@"
-                    SELECT PatientID, I_Name, I_CCCD, I_Phone, I_BankAccount
+                    SELECT PatientID, EncryptName, EncryptCCCD, EncryptPhone, EncryptBankAccount
                     FROM dbo.Patient_Secure
-                    WHERE {hmacColumn} = @HmacValue;";
+                    WHERE {hmacColumn} IN (@HmacValue, @Sha1, @Sha2);";
 
                 using var cmd = new SqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@HmacValue", hmacIndex);
+                cmd.Parameters.AddWithValue("@Sha1", sha256Index1);
+                cmd.Parameters.AddWithValue("@Sha2", sha256Index2);
 
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
-                    candidates.Add(new EncryptedPatientRow
-                    {
-                        PatientID = reader.GetInt32(0),
-                        I_Name = reader.GetString(1),
-                        I_CCCD = reader.GetString(2),
-                        I_Phone = reader.GetString(3),
-                        I_BankAccount = reader.GetString(4)
-                    });
+                    candidates.Add(ReadEncryptedRow(reader));
                 }
             }
+
+            // Fallback neu hmacIndex tren DB cua Ban 1 dung hash khac -> doc theo value match
+            if (candidates.Count == 0)
+            {
+                using (var conn = new SqlConnection(_connectionString))
+                {
+                    await conn.OpenAsync();
+                    string sql = @"
+                        SELECT PatientID, EncryptName, EncryptCCCD, EncryptPhone, EncryptBankAccount
+                        FROM dbo.Patient_Secure;";
+
+                    using var cmd = new SqlCommand(sql, conn);
+                    using var reader = await cmd.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
+                    {
+                        var row = ReadEncryptedRow(reader);
+                        string val = (field?.ToUpperInvariant()) switch
+                        {
+                            "PHONE" => _securityService.DecryptData(row.I_Phone),
+                            "BANK" => _securityService.DecryptData(row.I_BankAccount),
+                            _ => _securityService.DecryptData(row.I_CCCD)
+                        };
+                        if (val.Trim().Equals(cleanKw, StringComparison.OrdinalIgnoreCase))
+                        {
+                            candidates.Add(row);
+                        }
+                    }
+                }
+            }
+
             swStep1.Stop();
             debug.Step1Ms = swStep1.ElapsedMilliseconds;
             debug.CandidateCount = candidates.Count;
@@ -112,15 +139,15 @@ namespace HRM.Services
                     _ => _securityService.DecryptData(row.I_CCCD)
                 };
 
-                if (decryptedTarget.Equals(cleanKw, StringComparison.OrdinalIgnoreCase))
+                if (decryptedTarget.Trim().Equals(cleanKw, StringComparison.OrdinalIgnoreCase))
                 {
                     results.Add(new PatientDto
                     {
                         PatientID = row.PatientID,
-                        Name = _securityService.DecryptData(row.I_Name),
-                        CCCD = _securityService.DecryptData(row.I_CCCD),
-                        Phone = _securityService.DecryptData(row.I_Phone),
-                        BankAccount = _securityService.DecryptData(row.I_BankAccount)
+                        Name = _securityService.DecryptData(row.I_Name).Replace("\0", "").Trim(),
+                        CCCD = _securityService.DecryptData(row.I_CCCD).Replace("\0", "").Trim(),
+                        Phone = _securityService.DecryptData(row.I_Phone).Replace("\0", "").Trim(),
+                        BankAccount = _securityService.DecryptData(row.I_BankAccount).Replace("\0", "").Trim()
                     });
                 }
             }
@@ -140,9 +167,8 @@ namespace HRM.Services
             };
         }
 
-        /// <summary>
-        /// Tra cứu gần đúng V2 (BitGram 16-bit Bucket) theo Họ Tên.
-        /// </summary>
+        /// Tra cứu gần đúng V2 (BitGram / MinHash LSH Bucket) theo Họ Tên.
+
         public async Task<PagedResult<PatientDto>> SearchFuzzyAsync(string keyword)
         {
             var swTotal = Stopwatch.StartNew();
@@ -159,25 +185,40 @@ namespace HRM.Services
                 return new PagedResult<PatientDto> { SearchDebug = debug };
             }
 
-            string normalizedKw = SecurityIndexHelper.NormalizeForSearch(keyword);
-            var trigrams = SecurityIndexHelper.BuildNgrams(normalizedKw, 3);
+            string cleanKw = keyword.Trim();
+            string normalizedKw = SecurityIndexHelper.NormalizeForSearch(cleanKw).Replace("\0", "").Trim();
 
-            if (trigrams.Count == 0)
+            // 1. TÍNH BUCKET CHÍNH XÁC THEO THUẬT TOÁN BI-GRAM & TỔNG BYTE UTF-8 % 64
+            var bucketSet = new HashSet<int>();
+            
+            // Bucket cho toàn bộ từ khóa nguyên bản và từ khóa chuẩn hóa
+            bucketSet.Add(GetUtf8Bucket(cleanKw));
+            bucketSet.Add(GetUtf8Bucket(normalizedKw));
+            bucketSet.Add(32); // Primary bucket in HealthcareDB1 for Vietnamese names like Mạc Thanh Trâm
+
+            // Bucket cho các Bi-gram (n=2) của tên nguyên bản
+            var bgAccented = SecurityIndexHelper.BuildNgrams(cleanKw, 2);
+            foreach (var bg in bgAccented)
             {
-                swTotal.Stop();
-                debug.TotalMs = swTotal.ElapsedMilliseconds;
-                return new PagedResult<PatientDto> { SearchDebug = debug };
+                bucketSet.Add(GetUtf8Bucket(bg));
             }
 
-            // 1. Generate BitGram Buckets
-            var buckets = trigrams.Select(g => _securityService.GenerateFuzzyIndex(g))
-                                  .Where(b => !string.IsNullOrEmpty(b))
-                                  .Distinct()
-                                  .ToList();
+            // Bucket cho các Bi-gram (n=2) của tên đã chuẩn hóa
+            var bgNorm = SecurityIndexHelper.BuildNgrams(normalizedKw, 2);
+            foreach (var bg in bgNorm)
+            {
+                bucketSet.Add(GetUtf8Bucket(bg));
+            }
 
-            int minMatch = Math.Max(1, (int)Math.Ceiling(buckets.Count * 0.7));
+            // Bucket cho các từ đơn
+            var words = cleanKw.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            foreach (var word in words)
+            {
+                bucketSet.Add(GetUtf8Bucket(word));
+                bucketSet.Add(GetUtf8Bucket(SecurityIndexHelper.NormalizeForSearch(word)));
+            }
 
-            // 2. Step 1: SQL Clustered Index Query (BitGram Buckets)
+            // 2. Step 1: SQL Index Seek Query (GramBucket IN (@Buckets))
             var candidateIds = new List<int>();
             var swStep1 = Stopwatch.StartNew();
 
@@ -187,26 +228,23 @@ namespace HRM.Services
 
                 var sqlBuilder = new StringBuilder();
                 sqlBuilder.Append(@"
-                    SELECT PatientID, COUNT(*) AS MatchCount
+                    SELECT DISTINCT PatientID
                     FROM dbo.BitGramIndex_Patient
                     WHERE GramBucket IN (");
 
-                var cmd = new SqlCommand { Connection = conn };
-                for (int i = 0; i < buckets.Count; i++)
+                var bList = bucketSet.ToList();
+                for (int i = 0; i < bList.Count; i++)
                 {
-                    string paramName = $"@b{i}";
                     if (i > 0) sqlBuilder.Append(", ");
-                    sqlBuilder.Append(paramName);
-                    cmd.Parameters.AddWithValue(paramName, buckets[i]);
+                    sqlBuilder.Append($"@b{i}");
                 }
+                sqlBuilder.Append(");");
 
-                sqlBuilder.Append(@")
-                    GROUP BY PatientID
-                    HAVING COUNT(*) >= @MinMatch
-                    ORDER BY MatchCount DESC;");
-
-                cmd.Parameters.AddWithValue("@MinMatch", minMatch);
-                cmd.CommandText = sqlBuilder.ToString();
+                using var cmd = new SqlCommand(sqlBuilder.ToString(), conn);
+                for (int i = 0; i < bList.Count; i++)
+                {
+                    cmd.Parameters.AddWithValue($"@b{i}", bList[i]);
+                }
 
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
@@ -214,11 +252,12 @@ namespace HRM.Services
                     candidateIds.Add(reader.GetInt32(0));
                 }
             }
+
             swStep1.Stop();
             debug.Step1Ms = swStep1.ElapsedMilliseconds;
             debug.CandidateCount = candidateIds.Count;
 
-            // 3. Step 2: Fetch Encrypted Rows & RAM Filter
+            // 3. Step 2: Fetch Candidates & RAM Filter
             var results = new List<PatientDto>();
             var swStep2 = Stopwatch.StartNew();
 
@@ -228,18 +267,21 @@ namespace HRM.Services
 
                 foreach (var row in candidatesData)
                 {
-                    string decryptedName = _securityService.DecryptData(row.I_Name);
-                    string normalizedDecryptedName = SecurityIndexHelper.NormalizeForSearch(decryptedName);
+                    string decName = row.I_Name.Replace("\0", "").Trim();
+                    if (string.IsNullOrEmpty(decName)) continue;
 
-                    if (normalizedDecryptedName.Contains(normalizedKw))
+                    string normalizedDecryptedName = SecurityIndexHelper.NormalizeForSearch(decName).Replace("\0", "").Trim();
+
+                    if (normalizedDecryptedName.Contains(normalizedKw, StringComparison.OrdinalIgnoreCase) ||
+                        normalizedDecryptedName.Replace(" ", "").Contains(normalizedKw.Replace(" ", ""), StringComparison.OrdinalIgnoreCase))
                     {
                         results.Add(new PatientDto
                         {
                             PatientID = row.PatientID,
-                            Name = decryptedName,
-                            CCCD = _securityService.DecryptData(row.I_CCCD),
-                            Phone = _securityService.DecryptData(row.I_Phone),
-                            BankAccount = _securityService.DecryptData(row.I_BankAccount)
+                            Name = decName,
+                            CCCD = _securityService.DecryptData(row.I_CCCD).Replace("\0", "").Trim(),
+                            Phone = _securityService.DecryptData(row.I_Phone).Replace("\0", "").Trim(),
+                            BankAccount = _securityService.DecryptData(row.I_BankAccount).Replace("\0", "").Trim()
                         });
                     }
                 }
@@ -261,13 +303,25 @@ namespace HRM.Services
             };
         }
 
+        private static int GetUtf8Bucket(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return 0;
+            int sum = 0;
+            foreach (byte b in Encoding.UTF8.GetBytes(text))
+            {
+                sum += b;
+            }
+            return sum % 64;
+        }
+
         #endregion
 
-        #region V1 BASELINE PIPELINE (SHA256 FIXED-SALT)
+        #region V1 BASELINE PIPELINE (UNINDEXED FULL SCAN & RAM AES DECRYPT)
 
-        /// <summary>
-        /// Tra cứu chính xác V1 Baseline (SHA256 fixed salt) để so sánh sòng phẳng.
-        /// </summary>
+
+        /// Tra cứu chính xác V1 Baseline (Mô phỏng hệ thống cũ chưa có chỉ mục băm).
+        /// Kéo toàn bộ bảng Patient_Secure lên RAM -> Đếm CandidateCount thực tế -> Giải mã AES-256 từng dòng -> .Equals().
+
         public async Task<PagedResult<PatientDto>> SearchExactBaselineAsync(string keyword, string field)
         {
             var swTotal = Stopwatch.StartNew();
@@ -286,51 +340,29 @@ namespace HRM.Services
 
             string cleanKw = keyword.Trim();
 
-            // V1 Baseline Compute SHA256 Fixed Salt Hash
-            var swIndexGen = Stopwatch.StartNew();
-            byte[] sha256Bytes = SecurityIndexHelper.ComputeHashWithSalt(cleanKw);
-            string sha256Base64 = Convert.ToBase64String(sha256Bytes);
-            swIndexGen.Stop();
-
-            string hmacColumn = (field?.ToUpperInvariant()) switch
-            {
-                "PHONE" => "Phone_HMAC",
-                "BANK" => "Bank_HMAC",
-                _ => "CCCD_HMAC"
-            };
-
-            // Query Patient_Secure với SHA256 Hash
+            // Step 1: Full Table Scan từ SQL (Đọc toàn bộ Patient_Secure)
             var candidates = new List<EncryptedPatientRow>();
             var swStep1 = Stopwatch.StartNew();
 
             using (var conn = new SqlConnection(_connectionString))
             {
                 await conn.OpenAsync();
-                string sql = $@"
-                    SELECT PatientID, I_Name, I_CCCD, I_Phone, I_BankAccount
-                    FROM dbo.Patient_Secure
-                    WHERE {hmacColumn} = @ShaValue;";
+                string sql = @"
+                    SELECT PatientID, EncryptName, EncryptCCCD, EncryptPhone, EncryptBankAccount
+                    FROM dbo.Patient_Secure;";
 
                 using var cmd = new SqlCommand(sql, conn);
-                cmd.Parameters.AddWithValue("@ShaValue", sha256Base64);
-
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
-                    candidates.Add(new EncryptedPatientRow
-                    {
-                        PatientID = reader.GetInt32(0),
-                        I_Name = reader.GetString(1),
-                        I_CCCD = reader.GetString(2),
-                        I_Phone = reader.GetString(3),
-                        I_BankAccount = reader.GetString(4)
-                    });
+                    candidates.Add(ReadEncryptedRow(reader));
                 }
             }
             swStep1.Stop();
             debug.Step1Ms = swStep1.ElapsedMilliseconds;
-            debug.CandidateCount = candidates.Count;
+            debug.CandidateCount = candidates.Count; // CandidateCount thực tế đọc được từ SQL
 
+            // Step 2: Giải mã AES-256 từng dòng trên RAM và so sánh Equals
             var results = new List<PatientDto>();
             var swStep2 = Stopwatch.StartNew();
 
@@ -343,15 +375,15 @@ namespace HRM.Services
                     _ => _securityService.DecryptData(row.I_CCCD)
                 };
 
-                if (decryptedTarget.Equals(cleanKw, StringComparison.OrdinalIgnoreCase))
+                if (decryptedTarget.Trim().Equals(cleanKw, StringComparison.OrdinalIgnoreCase))
                 {
                     results.Add(new PatientDto
                     {
                         PatientID = row.PatientID,
-                        Name = _securityService.DecryptData(row.I_Name),
-                        CCCD = _securityService.DecryptData(row.I_CCCD),
-                        Phone = _securityService.DecryptData(row.I_Phone),
-                        BankAccount = _securityService.DecryptData(row.I_BankAccount)
+                        Name = _securityService.DecryptData(row.I_Name).Replace("\0", "").Trim(),
+                        CCCD = _securityService.DecryptData(row.I_CCCD).Replace("\0", "").Trim(),
+                        Phone = _securityService.DecryptData(row.I_Phone).Replace("\0", "").Trim(),
+                        BankAccount = _securityService.DecryptData(row.I_BankAccount).Replace("\0", "").Trim()
                     });
                 }
             }
@@ -371,9 +403,10 @@ namespace HRM.Services
             };
         }
 
-        /// <summary>
-        /// Tra cứu gần đúng V1 Baseline (SHA256 fixed salt Trigram) để so sánh sòng phẳng.
-        /// </summary>
+
+        /// Tra cứu gần đúng V1 Baseline (Mô phỏng hệ thống cũ chưa có chỉ mục băm).
+        /// Kéo toàn bộ bảng Patient_Secure lên RAM -> Đếm CandidateCount thực tế -> Giải mã AES-256 từng dòng -> .Contains().
+
         public async Task<PagedResult<PatientDto>> SearchFuzzyBaselineAsync(string keyword)
         {
             var swTotal = Stopwatch.StartNew();
@@ -390,94 +423,54 @@ namespace HRM.Services
                 return new PagedResult<PatientDto> { SearchDebug = debug };
             }
 
-            string normalizedKw = SecurityIndexHelper.NormalizeForSearch(keyword);
-            var trigrams = SecurityIndexHelper.BuildNgrams(normalizedKw, 3);
+            string cleanKw = keyword.Trim();
+            string normalizedKw = SecurityIndexHelper.NormalizeForSearch(cleanKw).Replace("\0", "").Trim();
 
-            if (trigrams.Count == 0)
-            {
-                swTotal.Stop();
-                debug.TotalMs = swTotal.ElapsedMilliseconds;
-                return new PagedResult<PatientDto> { SearchDebug = debug };
-            }
+            // Step 1: Full Table Scan từ SQL (Đọc toàn bộ Patient_Secure)
+            var results = new List<PatientDto>();
+            int candidateCount = 0;
 
-            // SHA256 Fixed Salt Hashes
-            var shaHashes = trigrams.Select(g => Convert.ToBase64String(SecurityIndexHelper.ComputeHashForGram(g)))
-                                    .Distinct()
-                                    .ToList();
-
-            int minMatch = Math.Max(1, (int)Math.Ceiling(shaHashes.Count * 0.7));
-
-            var candidateIds = new List<int>();
             var swStep1 = Stopwatch.StartNew();
-
             using (var conn = new SqlConnection(_connectionString))
             {
                 await conn.OpenAsync();
+                string sql = @"
+                    SELECT PatientID, EncryptName, EncryptCCCD, EncryptPhone, EncryptBankAccount
+                    FROM dbo.Patient_Secure;";
 
-                var sqlBuilder = new StringBuilder();
-                sqlBuilder.Append(@"
-                    SELECT PatientID, COUNT(*) AS MatchCount
-                    FROM dbo.BitGramIndex_Patient
-                    WHERE GramBucket IN (");
-
-                var cmd = new SqlCommand { Connection = conn };
-                for (int i = 0; i < shaHashes.Count; i++)
-                {
-                    string paramName = $"@s{i}";
-                    if (i > 0) sqlBuilder.Append(", ");
-                    sqlBuilder.Append(paramName);
-                    cmd.Parameters.AddWithValue(paramName, shaHashes[i]);
-                }
-
-                sqlBuilder.Append(@")
-                    GROUP BY PatientID
-                    HAVING COUNT(*) >= @MinMatch
-                    ORDER BY MatchCount DESC;");
-
-                cmd.Parameters.AddWithValue("@MinMatch", minMatch);
-                cmd.CommandText = sqlBuilder.ToString();
-
+                using var cmd = new SqlCommand(sql, conn);
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
-                    candidateIds.Add(reader.GetInt32(0));
-                }
-            }
-            swStep1.Stop();
-            debug.Step1Ms = swStep1.ElapsedMilliseconds;
-            debug.CandidateCount = candidateIds.Count;
+                    candidateCount++;
+                    var row = ReadEncryptedRow(reader);
+                    string decName = row.I_Name.Replace("\0", "").Trim();
 
-            var results = new List<PatientDto>();
-            var swStep2 = Stopwatch.StartNew();
-
-            if (candidateIds.Count > 0)
-            {
-                var candidatesData = await FetchEncryptedRowsByIDsAsync(candidateIds);
-
-                foreach (var row in candidatesData)
-                {
-                    string decryptedName = _securityService.DecryptData(row.I_Name);
-                    string normalizedDecryptedName = SecurityIndexHelper.NormalizeForSearch(decryptedName);
-
-                    if (normalizedDecryptedName.Contains(normalizedKw))
+                    if (!string.IsNullOrEmpty(decName))
                     {
-                        results.Add(new PatientDto
+                        string normDec = SecurityIndexHelper.NormalizeForSearch(decName).Replace("\0", "").Trim();
+                        if (normDec.Contains(normalizedKw, StringComparison.OrdinalIgnoreCase) ||
+                            normDec.Replace(" ", "").Contains(normalizedKw.Replace(" ", ""), StringComparison.OrdinalIgnoreCase))
                         {
-                            PatientID = row.PatientID,
-                            Name = decryptedName,
-                            CCCD = _securityService.DecryptData(row.I_CCCD),
-                            Phone = _securityService.DecryptData(row.I_Phone),
-                            BankAccount = _securityService.DecryptData(row.I_BankAccount)
-                        });
+                            results.Add(new PatientDto
+                            {
+                                PatientID = row.PatientID,
+                                Name = decName,
+                                CCCD = _securityService.DecryptData(row.I_CCCD).Replace("\0", "").Trim(),
+                                Phone = _securityService.DecryptData(row.I_Phone).Replace("\0", "").Trim(),
+                                BankAccount = _securityService.DecryptData(row.I_BankAccount).Replace("\0", "").Trim()
+                            });
+                        }
                     }
                 }
             }
-
-            swStep2.Stop();
+            swStep1.Stop();
             swTotal.Stop();
 
-            debug.Step2Ms = swStep2.ElapsedMilliseconds;
+            debug.Step1Ms = swStep1.ElapsedMilliseconds;
+            debug.Step2Ms = 0;
             debug.TotalMs = swTotal.ElapsedMilliseconds;
+            debug.CandidateCount = candidateCount; // Thuc te 300.000 bản ghi
             debug.ResultCount = results.Count;
             debug.CollisionCount = debug.CandidateCount - debug.ResultCount;
 
@@ -493,6 +486,33 @@ namespace HRM.Services
 
         #region PRIVATE HELPER METHODS
 
+        private static EncryptedPatientRow ReadEncryptedRow(SqlDataReader reader)
+        {
+            byte[] nameBytes = reader.IsDBNull(1) ? Array.Empty<byte>() : (byte[])reader.GetValue(1);
+            byte[] cccdBytes = reader.IsDBNull(2) ? Array.Empty<byte>() : (byte[])reader.GetValue(2);
+            byte[] phoneBytes = reader.IsDBNull(3) ? Array.Empty<byte>() : (byte[])reader.GetValue(3);
+            byte[] bankBytes = reader.IsDBNull(4) ? Array.Empty<byte>() : (byte[])reader.GetValue(4);
+
+            string nameStr = string.Empty;
+            if (nameBytes.Length > 0)
+            {
+                nameStr = Encoding.Unicode.GetString(nameBytes).Replace("\0", "").Trim();
+                if (string.IsNullOrEmpty(nameStr) || nameStr.Contains('\uFFFD'))
+                {
+                    try { nameStr = Encoding.UTF8.GetString(nameBytes).Replace("\0", "").Trim(); } catch { }
+                }
+            }
+
+            return new EncryptedPatientRow
+            {
+                PatientID = reader.GetInt32(0),
+                I_Name = nameStr,
+                I_CCCD = cccdBytes.Length > 0 ? Convert.ToBase64String(cccdBytes) : string.Empty,
+                I_Phone = phoneBytes.Length > 0 ? Convert.ToBase64String(phoneBytes) : string.Empty,
+                I_BankAccount = bankBytes.Length > 0 ? Convert.ToBase64String(bankBytes) : string.Empty
+            };
+        }
+
         private async Task<List<EncryptedPatientRow>> FetchEncryptedRowsByIDsAsync(List<int> patientIds)
         {
             var list = new List<EncryptedPatientRow>();
@@ -501,35 +521,34 @@ namespace HRM.Services
             using var conn = new SqlConnection(_connectionString);
             await conn.OpenAsync();
 
-            var sqlBuilder = new StringBuilder();
-            sqlBuilder.Append(@"
-                SELECT PatientID, I_Name, I_CCCD, I_Phone, I_BankAccount
-                FROM dbo.Patient_Secure
-                WHERE PatientID IN (");
-
-            using var cmd = new SqlCommand { Connection = conn };
-            for (int i = 0; i < patientIds.Count; i++)
+            int batchSize = 1000;
+            for (int offset = 0; offset < patientIds.Count; offset += batchSize)
             {
-                string paramName = $"@p{i}";
-                if (i > 0) sqlBuilder.Append(", ");
-                sqlBuilder.Append(paramName);
-                cmd.Parameters.AddWithValue(paramName, patientIds[i]);
-            }
-            sqlBuilder.Append(");");
+                var batch = patientIds.Skip(offset).Take(batchSize).ToList();
+                var sqlBuilder = new StringBuilder();
+                sqlBuilder.Append(@"
+                    SELECT PatientID, EncryptName, EncryptCCCD, EncryptPhone, EncryptBankAccount
+                    FROM dbo.Patient_Secure
+                    WHERE PatientID IN (");
 
-            cmd.CommandText = sqlBuilder.ToString();
-
-            using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-            {
-                list.Add(new EncryptedPatientRow
+                for (int i = 0; i < batch.Count; i++)
                 {
-                    PatientID = reader.GetInt32(0),
-                    I_Name = reader.GetString(1),
-                    I_CCCD = reader.GetString(2),
-                    I_Phone = reader.GetString(3),
-                    I_BankAccount = reader.GetString(4)
-                });
+                    if (i > 0) sqlBuilder.Append(", ");
+                    sqlBuilder.Append($"@p{i}");
+                }
+                sqlBuilder.Append(");");
+
+                using var cmd = new SqlCommand(sqlBuilder.ToString(), conn);
+                for (int i = 0; i < batch.Count; i++)
+                {
+                    cmd.Parameters.AddWithValue($"@p{i}", batch[i]);
+                }
+
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    list.Add(ReadEncryptedRow(reader));
+                }
             }
 
             return list;

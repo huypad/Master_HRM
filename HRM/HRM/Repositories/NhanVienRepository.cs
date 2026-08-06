@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Data;
 using HRM.Common;
 using HRM.Helpers.Security;
+using HRM.Model;
 //using HRM.Services;
 
 namespace HRM.Repositories
@@ -20,6 +21,9 @@ namespace HRM.Repositories
             _context = context;
             _securityService = securityService;
         }
+
+        public SearchDebugInfo? LastSearchDebug { get; private set; }
+        public int LastSearchTotal { get; private set; }
 
         public static class SortDirectionConst
         {

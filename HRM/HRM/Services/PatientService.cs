@@ -13,10 +13,10 @@ using HRM.Security;
 
 namespace HRM.Services
 {
-    
-    /// Triển khai Quản lý Bệnh nhân (CRUD) trực tiếp qua ADO.NET trên HealthcareDB.
-    /// Tự động đồng bộ mã hóa AES-256, HMAC exact index và BitGram 16-bit bucket index.
-   
+
+
+    /// Tự động đồng bộ mã hóa AES-256 (varbinary), HMAC exact index và BitGram 16-bit / LSH bucket index.
+
     public class PatientService : IPatientService
     {
         private readonly string _connectionString;
@@ -51,7 +51,7 @@ namespace HRM.Services
 
                 // 2. Lay du lieu phan trang
                 string pageSql = @"
-                    SELECT PatientID, Name, CCCD, Phone, BankAccount, Age, Gender, Blood_Type, Email
+                    SELECT PatientID, FullName, CCCD, Phone, BankAccount, Age, Gender, BloodType, Email
                     FROM dbo.Patient
                     ORDER BY PatientID DESC
                     OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
@@ -67,14 +67,14 @@ namespace HRM.Services
                         items.Add(new PatientDto
                         {
                             PatientID = reader.GetInt32(0),
-                            Name = reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
-                            CCCD = reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
-                            Phone = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
-                            BankAccount = reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
+                            Name = reader.IsDBNull(1) ? string.Empty : reader.GetString(1).Trim(),
+                            CCCD = reader.IsDBNull(2) ? string.Empty : reader.GetString(2).Trim(),
+                            Phone = reader.IsDBNull(3) ? string.Empty : reader.GetString(3).Trim(),
+                            BankAccount = reader.IsDBNull(4) ? string.Empty : reader.GetString(4).Trim(),
                             Age = reader.IsDBNull(5) ? null : reader.GetInt32(5),
-                            Gender = reader.IsDBNull(6) ? null : reader.GetString(6),
-                            Blood_Type = reader.IsDBNull(7) ? null : reader.GetString(7),
-                            Email = reader.IsDBNull(8) ? null : reader.GetString(8)
+                            Gender = reader.IsDBNull(6) ? null : reader.GetString(6).Trim(),
+                            Blood_Type = reader.IsDBNull(7) ? null : reader.GetString(7).Trim(),
+                            Email = reader.IsDBNull(8) ? null : reader.GetString(8).Trim()
                         });
                     }
                 }
@@ -93,7 +93,7 @@ namespace HRM.Services
             await conn.OpenAsync();
 
             string sql = @"
-                SELECT PatientID, Name, CCCD, Phone, BankAccount, Age, Gender, Blood_Type, Email
+                SELECT PatientID, FullName, CCCD, Phone, BankAccount, Age, Gender, BloodType, Email
                 FROM dbo.Patient
                 WHERE PatientID = @Id;";
 
@@ -106,14 +106,14 @@ namespace HRM.Services
                 return new PatientDto
                 {
                     PatientID = reader.GetInt32(0),
-                    Name = reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
-                    CCCD = reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
-                    Phone = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
-                    BankAccount = reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
+                    Name = reader.IsDBNull(1) ? string.Empty : reader.GetString(1).Trim(),
+                    CCCD = reader.IsDBNull(2) ? string.Empty : reader.GetString(2).Trim(),
+                    Phone = reader.IsDBNull(3) ? string.Empty : reader.GetString(3).Trim(),
+                    BankAccount = reader.IsDBNull(4) ? string.Empty : reader.GetString(4).Trim(),
                     Age = reader.IsDBNull(5) ? null : reader.GetInt32(5),
-                    Gender = reader.IsDBNull(6) ? null : reader.GetString(6),
-                    Blood_Type = reader.IsDBNull(7) ? null : reader.GetString(7),
-                    Email = reader.IsDBNull(8) ? null : reader.GetString(8)
+                    Gender = reader.IsDBNull(6) ? null : reader.GetString(6).Trim(),
+                    Blood_Type = reader.IsDBNull(7) ? null : reader.GetString(7).Trim(),
+                    Email = reader.IsDBNull(8) ? null : reader.GetString(8).Trim()
                 };
             }
 
@@ -135,30 +135,35 @@ namespace HRM.Services
 
                 // 1. Insert vao bang Patient (Plaintext)
                 string insertPatientSql = @"
-                    INSERT INTO dbo.Patient (Name, CCCD, Phone, BankAccount, Age, Gender, Blood_Type, Email)
-                    VALUES (@Name, @CCCD, @Phone, @BankAccount, @Age, @Gender, @Blood_Type, @Email);
+                    INSERT INTO dbo.Patient (FullName, CCCD, Phone, BankAccount, Age, Gender, BloodType, Email)
+                    VALUES (@FullName, @CCCD, @Phone, @BankAccount, @Age, @Gender, @BloodType, @Email);
                     SELECT SCOPE_IDENTITY();";
 
                 int newId;
                 using (var cmd = new SqlCommand(insertPatientSql, conn, tx))
                 {
-                    cmd.Parameters.AddWithValue("@Name", nameStr);
+                    cmd.Parameters.AddWithValue("@FullName", nameStr);
                     cmd.Parameters.AddWithValue("@CCCD", cccdStr);
                     cmd.Parameters.AddWithValue("@Phone", phoneStr);
                     cmd.Parameters.AddWithValue("@BankAccount", bankStr);
-                    cmd.Parameters.AddWithValue("@Age", model.Age);
+                    cmd.Parameters.AddWithValue("@Age", (object?)model.Age ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@Gender", (object?)model.Gender ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@Blood_Type", (object?)model.Blood_Type ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@BloodType", (object?)model.Blood_Type ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@Email", (object?)model.Email ?? DBNull.Value);
 
                     newId = Convert.ToInt32(await cmd.ExecuteScalarAsync());
                 }
 
                 // 2. Ma hoa AES va sinh HMAC
-                string encName = _securityService.EncryptData(nameStr);
-                string encCCCD = _securityService.EncryptData(cccdStr);
-                string encPhone = _securityService.EncryptData(phoneStr);
-                string encBank = _securityService.EncryptData(bankStr);
+                string encNameBase64 = _securityService.EncryptData(nameStr);
+                string encCCCDBase64 = _securityService.EncryptData(cccdStr);
+                string encPhoneBase64 = _securityService.EncryptData(phoneStr);
+                string encBankBase64 = _securityService.EncryptData(bankStr);
+
+                byte[] encNameBytes = !string.IsNullOrEmpty(encNameBase64) ? Convert.FromBase64String(encNameBase64) : Array.Empty<byte>();
+                byte[] encCCCDBytes = !string.IsNullOrEmpty(encCCCDBase64) ? Convert.FromBase64String(encCCCDBase64) : Array.Empty<byte>();
+                byte[] encPhoneBytes = !string.IsNullOrEmpty(encPhoneBase64) ? Convert.FromBase64String(encPhoneBase64) : Array.Empty<byte>();
+                byte[] encBankBytes = !string.IsNullOrEmpty(encBankBase64) ? Convert.FromBase64String(encBankBase64) : Array.Empty<byte>();
 
                 string hmacCCCD = _securityService.GenerateExactIndex(cccdStr);
                 string hmacPhone = _securityService.GenerateExactIndex(phoneStr);
@@ -166,17 +171,17 @@ namespace HRM.Services
 
                 string insertSecureSql = @"
                     INSERT INTO dbo.Patient_Secure 
-                    (PatientID, I_Name, I_CCCD, I_Phone, I_BankAccount, CCCD_HMAC, Phone_HMAC, Bank_HMAC, SeededAt)
+                    (PatientID, EncryptName, EncryptCCCD, EncryptPhone, EncryptBankAccount, CCCD_HMAC, Phone_HMAC, Bank_HMAC, CreatedAt)
                     VALUES 
-                    (@PatientID, @I_Name, @I_CCCD, @I_Phone, @I_BankAccount, @CCCD_HMAC, @Phone_HMAC, @Bank_HMAC, GETDATE());";
+                    (@PatientID, @EncryptName, @EncryptCCCD, @EncryptPhone, @EncryptBankAccount, @CCCD_HMAC, @Phone_HMAC, @Bank_HMAC, GETDATE());";
 
                 using (var cmd = new SqlCommand(insertSecureSql, conn, tx))
                 {
                     cmd.Parameters.AddWithValue("@PatientID", newId);
-                    cmd.Parameters.AddWithValue("@I_Name", encName);
-                    cmd.Parameters.AddWithValue("@I_CCCD", encCCCD);
-                    cmd.Parameters.AddWithValue("@I_Phone", encPhone);
-                    cmd.Parameters.AddWithValue("@I_BankAccount", encBank);
+                    cmd.Parameters.Add("@EncryptName", SqlDbType.VarBinary, -1).Value = (object)encNameBytes ?? DBNull.Value;
+                    cmd.Parameters.Add("@EncryptCCCD", SqlDbType.VarBinary, -1).Value = (object)encCCCDBytes ?? DBNull.Value;
+                    cmd.Parameters.Add("@EncryptPhone", SqlDbType.VarBinary, -1).Value = (object)encPhoneBytes ?? DBNull.Value;
+                    cmd.Parameters.Add("@EncryptBankAccount", SqlDbType.VarBinary, -1).Value = (object)encBankBytes ?? DBNull.Value;
                     cmd.Parameters.AddWithValue("@CCCD_HMAC", hmacCCCD);
                     cmd.Parameters.AddWithValue("@Phone_HMAC", hmacPhone);
                     cmd.Parameters.AddWithValue("@Bank_HMAC", hmacBank);
@@ -184,28 +189,22 @@ namespace HRM.Services
                     await cmd.ExecuteNonQueryAsync();
                 }
 
-                // 3. Sinh BitGram Bucket Index cho Name va Insert vao BitGramIndex_Patient
-                string normalizedName = SecurityIndexHelper.NormalizeForSearch(nameStr);
-                var trigrams = SecurityIndexHelper.BuildNgrams(normalizedName, 3);
-
-                if (trigrams.Count > 0)
+                // 3. Sinh BitGram / LSH Bucket Index va Insert vao BitGramIndex_Patient
+                string fuzzyBucketStr = _securityService.GenerateFuzzyIndex(nameStr);
+                if (!string.IsNullOrEmpty(fuzzyBucketStr))
                 {
+                    int bucketInt = Math.Abs(fuzzyBucketStr.GetHashCode());
+
                     string insertBitGramSql = @"
-                        INSERT INTO dbo.BitGramIndex_Patient (PatientID, GramBucket, Position)
-                        VALUES (@PatientID, @GramBucket, @Position);";
+                        INSERT INTO dbo.BitGramIndex_Patient (PatientID, GramBucket, GramPosition)
+                        VALUES (@PatientID, @GramBucket, @GramPosition);";
 
-                    for (int pos = 0; pos < trigrams.Count; pos++)
-                    {
-                        string gram = trigrams[pos];
-                        string bucket = _securityService.GenerateFuzzyIndex(gram);
+                    using var cmd = new SqlCommand(insertBitGramSql, conn, tx);
+                    cmd.Parameters.AddWithValue("@PatientID", newId);
+                    cmd.Parameters.AddWithValue("@GramBucket", bucketInt);
+                    cmd.Parameters.AddWithValue("@GramPosition", 0);
 
-                        using var cmd = new SqlCommand(insertBitGramSql, conn, tx);
-                        cmd.Parameters.AddWithValue("@PatientID", newId);
-                        cmd.Parameters.AddWithValue("@GramBucket", bucket);
-                        cmd.Parameters.AddWithValue("@Position", pos);
-
-                        await cmd.ExecuteNonQueryAsync();
-                    }
+                    await cmd.ExecuteNonQueryAsync();
                 }
 
                 await tx.CommitAsync();
@@ -246,21 +245,21 @@ namespace HRM.Services
                 // 1. Cap nhat Patient (Plaintext)
                 string updatePatientSql = @"
                     UPDATE dbo.Patient
-                    SET Name = @Name, CCCD = @CCCD, Phone = @Phone, BankAccount = @BankAccount,
-                        Age = @Age, Gender = @Gender, Blood_Type = @Blood_Type, Email = @Email
+                    SET FullName = @FullName, CCCD = @CCCD, Phone = @Phone, BankAccount = @BankAccount,
+                        Age = @Age, Gender = @Gender, BloodType = @BloodType, Email = @Email
                     WHERE PatientID = @Id;";
 
                 int rows;
                 using (var cmd = new SqlCommand(updatePatientSql, conn, tx))
                 {
                     cmd.Parameters.AddWithValue("@Id", id);
-                    cmd.Parameters.AddWithValue("@Name", nameStr);
+                    cmd.Parameters.AddWithValue("@FullName", nameStr);
                     cmd.Parameters.AddWithValue("@CCCD", cccdStr);
                     cmd.Parameters.AddWithValue("@Phone", phoneStr);
                     cmd.Parameters.AddWithValue("@BankAccount", bankStr);
-                    cmd.Parameters.AddWithValue("@Age", model.Age);
+                    cmd.Parameters.AddWithValue("@Age", (object?)model.Age ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@Gender", (object?)model.Gender ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@Blood_Type", (object?)model.Blood_Type ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@BloodType", (object?)model.Blood_Type ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@Email", (object?)model.Email ?? DBNull.Value);
 
                     rows = await cmd.ExecuteNonQueryAsync();
@@ -273,10 +272,15 @@ namespace HRM.Services
                 }
 
                 // 2. Re-encrypt & Re-index Patient_Secure
-                string encName = _securityService.EncryptData(nameStr);
-                string encCCCD = _securityService.EncryptData(cccdStr);
-                string encPhone = _securityService.EncryptData(phoneStr);
-                string encBank = _securityService.EncryptData(bankStr);
+                string encNameBase64 = _securityService.EncryptData(nameStr);
+                string encCCCDBase64 = _securityService.EncryptData(cccdStr);
+                string encPhoneBase64 = _securityService.EncryptData(phoneStr);
+                string encBankBase64 = _securityService.EncryptData(bankStr);
+
+                byte[] encNameBytes = !string.IsNullOrEmpty(encNameBase64) ? Convert.FromBase64String(encNameBase64) : Array.Empty<byte>();
+                byte[] encCCCDBytes = !string.IsNullOrEmpty(encCCCDBase64) ? Convert.FromBase64String(encCCCDBase64) : Array.Empty<byte>();
+                byte[] encPhoneBytes = !string.IsNullOrEmpty(encPhoneBase64) ? Convert.FromBase64String(encPhoneBase64) : Array.Empty<byte>();
+                byte[] encBankBytes = !string.IsNullOrEmpty(encBankBase64) ? Convert.FromBase64String(encBankBase64) : Array.Empty<byte>();
 
                 string hmacCCCD = _securityService.GenerateExactIndex(cccdStr);
                 string hmacPhone = _securityService.GenerateExactIndex(phoneStr);
@@ -284,17 +288,17 @@ namespace HRM.Services
 
                 string updateSecureSql = @"
                     UPDATE dbo.Patient_Secure
-                    SET I_Name = @I_Name, I_CCCD = @I_CCCD, I_Phone = @I_Phone, I_BankAccount = @I_BankAccount,
+                    SET EncryptName = @EncryptName, EncryptCCCD = @EncryptCCCD, EncryptPhone = @EncryptPhone, EncryptBankAccount = @EncryptBankAccount,
                         CCCD_HMAC = @CCCD_HMAC, Phone_HMAC = @Phone_HMAC, Bank_HMAC = @Bank_HMAC
                     WHERE PatientID = @Id;";
 
                 using (var cmd = new SqlCommand(updateSecureSql, conn, tx))
                 {
                     cmd.Parameters.AddWithValue("@Id", id);
-                    cmd.Parameters.AddWithValue("@I_Name", encName);
-                    cmd.Parameters.AddWithValue("@I_CCCD", encCCCD);
-                    cmd.Parameters.AddWithValue("@I_Phone", encPhone);
-                    cmd.Parameters.AddWithValue("@I_BankAccount", encBank);
+                    cmd.Parameters.Add("@EncryptName", SqlDbType.VarBinary, -1).Value = (object)encNameBytes ?? DBNull.Value;
+                    cmd.Parameters.Add("@EncryptCCCD", SqlDbType.VarBinary, -1).Value = (object)encCCCDBytes ?? DBNull.Value;
+                    cmd.Parameters.Add("@EncryptPhone", SqlDbType.VarBinary, -1).Value = (object)encPhoneBytes ?? DBNull.Value;
+                    cmd.Parameters.Add("@EncryptBankAccount", SqlDbType.VarBinary, -1).Value = (object)encBankBytes ?? DBNull.Value;
                     cmd.Parameters.AddWithValue("@CCCD_HMAC", hmacCCCD);
                     cmd.Parameters.AddWithValue("@Phone_HMAC", hmacPhone);
                     cmd.Parameters.AddWithValue("@Bank_HMAC", hmacBank);
@@ -310,27 +314,21 @@ namespace HRM.Services
                     await cmd.ExecuteNonQueryAsync();
                 }
 
-                string normalizedName = SecurityIndexHelper.NormalizeForSearch(nameStr);
-                var trigrams = SecurityIndexHelper.BuildNgrams(normalizedName, 3);
-
-                if (trigrams.Count > 0)
+                string fuzzyBucketStr = _securityService.GenerateFuzzyIndex(nameStr);
+                if (!string.IsNullOrEmpty(fuzzyBucketStr))
                 {
+                    int bucketInt = Math.Abs(fuzzyBucketStr.GetHashCode());
+
                     string insertBitGramSql = @"
-                        INSERT INTO dbo.BitGramIndex_Patient (PatientID, GramBucket, Position)
-                        VALUES (@Id, @GramBucket, @Position);";
+                        INSERT INTO dbo.BitGramIndex_Patient (PatientID, GramBucket, GramPosition)
+                        VALUES (@Id, @GramBucket, @GramPosition);";
 
-                    for (int pos = 0; pos < trigrams.Count; pos++)
-                    {
-                        string gram = trigrams[pos];
-                        string bucket = _securityService.GenerateFuzzyIndex(gram);
+                    using var cmd = new SqlCommand(insertBitGramSql, conn, tx);
+                    cmd.Parameters.AddWithValue("@Id", id);
+                    cmd.Parameters.AddWithValue("@GramBucket", bucketInt);
+                    cmd.Parameters.AddWithValue("@GramPosition", 0);
 
-                        using var cmd = new SqlCommand(insertBitGramSql, conn, tx);
-                        cmd.Parameters.AddWithValue("@Id", id);
-                        cmd.Parameters.AddWithValue("@GramBucket", bucket);
-                        cmd.Parameters.AddWithValue("@Position", pos);
-
-                        await cmd.ExecuteNonQueryAsync();
-                    }
+                    await cmd.ExecuteNonQueryAsync();
                 }
 
                 await tx.CommitAsync();

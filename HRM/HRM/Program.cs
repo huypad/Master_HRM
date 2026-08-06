@@ -21,6 +21,10 @@ builder.Services.AddScoped<INhanVienRepository, NhanVienRepository>();
 builder.Services.AddScoped<INhanVienService, NhanVienService>();
 builder.Services.AddScoped<HRM.Helpers.Security.ISecurityService, HRM.Helpers.Security.MockSecurityService>();
 
+builder.Services.AddScoped<HRM.Security.IHybridSecurityService, HRM.Security.RealSecurityService>();
+builder.Services.AddScoped<IPatientSearchService, PatientSearchService>();
+builder.Services.AddScoped<IPatientService, PatientService>();
+
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>

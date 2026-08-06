@@ -1,92 +1,188 @@
 using System;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using HRM.Common;
 using HRM.Helpers.Security;
 
 namespace HRM.Security
 {
-    
-    /// Triển khai dịch vụ bảo mật V2 (AES-256, HMAC-SHA256 Exact Index và BitGram 16-bit Bucket Index).
-    
+   
+    /// Triển khai dịch vụ bảo mật lai (Hybrid Security) cho HealthcareDB1.
+    /// - Mã hóa/Giải mã: AES-256 (IV 16 byte ở đầu ciphertext, PKCS7).
+    /// - Chỉ mục tra cứu chính xác: HMAC-SHA256 (Hex 64 ký tự).
+    /// - Chỉ mục tra cứu mờ: MinHash LSH (16 Hash Functions, 4 Bands, 4 Rows).
+
     public class RealSecurityService : IHybridSecurityService
     {
-        // Secret Key dùng chung cho các thuật toán băm HMAC-SHA256
-        private static readonly byte[] HmacKey = Encoding.UTF8.GetBytes("HRM_HMAC_BenchmarkKey_2026_V2");
+        // Khóa bí mật 256-bit (32 bytes) cho AES và HMAC
+        private static readonly byte[] AES_KEY = Encoding.UTF8.GetBytes("HRM_MASTER_KEY_32BYTES_2026_LEADER_SEC!");
+        private static readonly byte[] HMAC_KEY = Encoding.UTF8.GetBytes("HRM_HMAC_INDEX_KEY_32BYTES_2026_LEADER!");
 
-        
-        /// Mã hóa dữ liệu bằng thuật toán AES-256 (Tái sử dụng EncryptionHelper).
-       
-        /// <param name="rawText">Dữ liệu cần mã hóa.</param>
-        /// <returns>Chuỗi mã hóa dạng Base64.</returns>
-        public string EncryptData(string rawText)
+        #region IHybridSecurityService Implementation
+
+
+        /// Mã hóa dữ liệu bằng AES-256 (IV 16 byte ngẫu nhiên được nối vào đầu cipher).
+        /// Output: Chuỗi Base64 đại diện cho [IV (16B) + CipherText (NB)].
+
+        public string EncryptData(string plainText)
         {
-            if (string.IsNullOrWhiteSpace(rawText))
-                return string.Empty;
+            if (string.IsNullOrEmpty(plainText)) return string.Empty;
 
-            var bytes = EncryptionHelper.EncryptString(rawText);
-            return bytes != null ? Convert.ToBase64String(bytes) : string.Empty;
+            using var aes = Aes.Create();
+            aes.Key = AES_KEY;
+            aes.GenerateIV(); // Tạo IV ngẫu nhiên 16 bytes
+            aes.Mode = CipherMode.CBC;
+            aes.Padding = PaddingMode.PKCS7;
+
+            using var encryptor = aes.CreateEncryptor();
+            byte[] plainBytes = Encoding.UTF8.GetBytes(plainText);
+            byte[] cipherBytes = encryptor.TransformFinalBlock(plainBytes, 0, plainBytes.Length);
+
+            // Nối IV (16 bytes) + CipherBytes
+            byte[] result = new byte[aes.IV.Length + cipherBytes.Length];
+            Buffer.BlockCopy(aes.IV, 0, result, 0, aes.IV.Length);
+            Buffer.BlockCopy(cipherBytes, 0, result, aes.IV.Length, cipherBytes.Length);
+
+            return Convert.ToBase64String(result);
         }
 
-        
-        /// Giải mã dữ liệu mã hóa AES-256.
-       
-        /// <param name="cipherText">Chuỗi mã hóa dạng Base64.</param>
-        /// <returns>Dữ liệu giải mã gốc (Plaintext).</returns>
+
+        /// Giải mã dữ liệu AES-256 từ chuỗi Base64 chứa [IV (16B) + CipherText (NB)].
+
         public string DecryptData(string cipherText)
         {
-            if (string.IsNullOrWhiteSpace(cipherText))
-                return string.Empty;
+            if (string.IsNullOrEmpty(cipherText)) return string.Empty;
+
+            // Nếu dữ liệu đã là PlainText
+            if (!cipherText.StartsWith("BKT_") && !IsBase64String(cipherText))
+            {
+                return cipherText;
+            }
 
             try
             {
-                var bytes = Convert.FromBase64String(cipherText);
-                return EncryptionHelper.DecryptString(bytes) ?? string.Empty;
+                byte[] fullCipher = Convert.FromBase64String(cipherText);
+                
+                // Nếu độ dài nhỏ hơn 16 bytes IV, decode dạng UTF-8/ASCII Base64
+                if (fullCipher.Length < 16)
+                {
+                    string utf8Str = Encoding.UTF8.GetString(fullCipher).Replace("\0", "").Trim();
+                    if (!string.IsNullOrEmpty(utf8Str) && utf8Str.All(c => !char.IsControl(c) || c == ' ' || c == '\t'))
+                    {
+                        return utf8Str;
+                    }
+                    return cipherText;
+                }
+
+                // Tách IV (16 bytes đầu) và CipherText (phần còn lại)
+                byte[] iv = new byte[16];
+                byte[] cipher = new byte[fullCipher.Length - 16];
+                Buffer.BlockCopy(fullCipher, 0, iv, 0, 16);
+                Buffer.BlockCopy(fullCipher, 16, cipher, 0, cipher.Length);
+
+                using var aes = Aes.Create();
+                aes.Key = AES_KEY;
+                aes.IV = iv;
+                aes.Mode = CipherMode.CBC;
+                aes.Padding = PaddingMode.PKCS7;
+
+                using var decryptor = aes.CreateDecryptor();
+                byte[] decryptedBytes = decryptor.TransformFinalBlock(cipher, 0, cipher.Length);
+
+                return Encoding.UTF8.GetString(decryptedBytes).Replace("\0", "").Trim();
             }
             catch
             {
-                return string.Empty;
+                // Nếu chuỗi là Base64 của UTF-8/ASCII chưa mã hóa AES
+                try
+                {
+                    byte[] rawBytes = Convert.FromBase64String(cipherText);
+                    string rawStr = Encoding.UTF8.GetString(rawBytes).Replace("\0", "").Trim();
+                    if (!string.IsNullOrEmpty(rawStr) && rawStr.All(c => !char.IsControl(c) || c == ' ' || c == '\t'))
+                    {
+                        return rawStr;
+                    }
+                }
+                catch { }
+
+                return cipherText;
             }
         }
 
-        
-        /// Tạo Exact Index cho CCCD, SĐT hoặc Số Tài Khoản bằng HMAC-SHA256.
-        
-        /// <param name="rawText">Từ khóa tra cứu chính xác.</param>
-        /// <returns>Chuỗi HMAC-SHA256 dạng Base64 (44 ký tự).</returns>
-        public string GenerateExactIndex(string rawText)
+    
+        /// Tạo chỉ mục tìm kiếm chính xác HMAC-SHA256 (64 ký tự Hex) cho CCCD/Phone/BankAccount.
+   
+        public string GenerateExactIndex(string plainText)
         {
-            if (string.IsNullOrWhiteSpace(rawText))
-                return string.Empty;
+            if (string.IsNullOrWhiteSpace(plainText)) return string.Empty;
 
-            var normalized = SecurityIndexHelper.NormalizeForSearch(rawText);
-            if (string.IsNullOrWhiteSpace(normalized))
-                return string.Empty;
-
-            using var hmac = new HMACSHA256(HmacKey);
-            var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(normalized));
-            return Convert.ToBase64String(hash);
+            string normalized = plainText.Trim();
+            using var hmac = new HMACSHA256(HMAC_KEY);
+            byte[] hashBytes = hmac.ComputeHash(Encoding.UTF8.GetBytes(normalized));
+            
+            return Convert.ToHexString(hashBytes); // 64 ky tu Hex in hoa
         }
 
-       
-        /// Tạo BitGram Bucket ID ("BG_XXXX") cho một trigram Họ Tên bằng HMAC-SHA256 (lấy 16-bit hash đầu).
-        
-        /// <param name="rawText">Trigram đã normalize (3 ký tự).</param>
-        /// <returns>Chuỗi Bucket ID dạng "BG_XXXX".</returns>
-        public string GenerateFuzzyIndex(string rawText)
+    
+        /// Tạo chỉ mục tìm kiếm mờ MinHash LSH (16 hash functions, split thành 4 bands x 4 rows).
+        /// Trả về chuỗi đại diện cho LSH buckets.
+
+        public string GenerateFuzzyIndex(string plainText)
         {
-            if (string.IsNullOrWhiteSpace(rawText))
-                return string.Empty;
+            if (string.IsNullOrWhiteSpace(plainText)) return string.Empty;
 
-            var normalized = SecurityIndexHelper.NormalizeForSearch(rawText);
-            if (string.IsNullOrWhiteSpace(normalized))
-                return string.Empty;
+            // 1. Chuẩn hóa & tạo Bi-gram n-grams
+            string normalized = SecurityIndexHelper.NormalizeForSearch(plainText);
+            var ngrams = SecurityIndexHelper.BuildNgrams(normalized, 2);
 
-            using var hmac = new HMACSHA256(HmacKey);
-            var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(normalized));
+            if (ngrams.Count == 0) return string.Empty;
 
-            var bucket = (hash[0] << 8) | hash[1];
-            return $"BG_{bucket:X4}";
+            // 2. Tính MinHash Signature (16 giá trị int min)
+            int[] minHashSig = new int[16];
+            for (int i = 0; i < 16; i++)
+            {
+                int minVal = int.MaxValue;
+                int a = (i + 1) * 3 + 7;
+                int b = (i + 1) * 5 + 11;
+
+                foreach (var gram in ngrams)
+                {
+                    int h = Math.Abs((gram.GetHashCode() * a + b) % 2147483647);
+                    if (h < minVal) minVal = h;
+                }
+                minHashSig[i] = minVal;
+            }
+
+            // 3. Chia 16 hash thành 4 Bands, mỗi Band 4 rows -> LSH Bucket Keys
+            var buckets = new string[4];
+            for (int band = 0; band < 4; band++)
+            {
+                int h1 = minHashSig[band * 4];
+                int h2 = minHashSig[band * 4 + 1];
+                int h3 = minHashSig[band * 4 + 2];
+                int h4 = minHashSig[band * 4 + 3];
+
+                string bandStr = $"{h1}_{h2}_{h3}_{h4}";
+                using var md5 = MD5.Create();
+                byte[] bHash = md5.ComputeHash(Encoding.UTF8.GetBytes(bandStr));
+                buckets[band] = Convert.ToHexString(bHash).Substring(0, 8); // 8 char Bucket ID
+            }
+
+            return string.Join(";", buckets);
         }
+
+        #endregion
+
+        #region Private Helpers
+
+        private static bool IsBase64String(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s) || s.Length % 4 != 0) return false;
+            return Convert.TryFromBase64String(s, new Span<byte>(new byte[s.Length]), out _);
+        }
+
+        #endregion
     }
 }
