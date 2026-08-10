@@ -1,12 +1,12 @@
 using HRM.Data;
 using HRM.DTOs;
 using HRM.Entities;
+using HRM.Model;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using System.Data;
 using HRM.Common;
 using HRM.Helpers.Security;
-using HRM.Model;
 //using HRM.Services;
 
 namespace HRM.Repositories
@@ -16,14 +16,15 @@ namespace HRM.Repositories
         private readonly HrmDbContext _context;
         private readonly ISecurityService _securityService;
 
+        // Implement thuộc tính của interface INhanVienRepository
+        public SearchDebugInfo? LastSearchDebug { get; set; }
+        public int LastSearchTotal { get; set; }
+
         public NhanVienRepository(HrmDbContext context, ISecurityService securityService)
         {
             _context = context;
             _securityService = securityService;
         }
-
-        public SearchDebugInfo? LastSearchDebug { get; private set; }
-        public int LastSearchTotal { get; private set; }
 
         public static class SortDirectionConst
         {

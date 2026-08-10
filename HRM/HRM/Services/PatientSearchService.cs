@@ -53,6 +53,7 @@ namespace HRM.Services
             }
 
             string cleanKw = keyword.Trim();
+            bool isIdSearch = (field?.ToUpperInvariant()) is "ID" or "PATIENTID";
 
             // 1. Generate HMAC & SHA256 Exact Indexes (Bao phủ cả HMAC tiêu chuẩn và SHA256 không khóa của Bạn 1)
             var swIndexGen = Stopwatch.StartNew();
@@ -149,6 +150,27 @@ namespace HRM.Services
                         Phone = _securityService.DecryptData(row.I_Phone).Replace("\0", "").Trim(),
                         BankAccount = _securityService.DecryptData(row.I_BankAccount).Replace("\0", "").Trim()
                     });
+                }
+                else
+                {
+                    decryptedTarget = (field?.ToUpperInvariant()) switch
+                    {
+                        "PHONE" => _securityService.DecryptData(row.I_Phone),
+                        "BANK" => _securityService.DecryptData(row.I_BankAccount),
+                        _ => _securityService.DecryptData(row.I_CCCD)
+                    };
+
+                    if (decryptedTarget.Equals(cleanKw, StringComparison.OrdinalIgnoreCase))
+                    {
+                        results.Add(new PatientDto
+                        {
+                            PatientID = row.PatientID,
+                            Name = _securityService.DecryptData(row.I_Name),
+                            CCCD = _securityService.DecryptData(row.I_CCCD),
+                            Phone = _securityService.DecryptData(row.I_Phone),
+                            BankAccount = _securityService.DecryptData(row.I_BankAccount)
+                        });
+                    }
                 }
             }
             swStep2.Stop();

@@ -2,16 +2,19 @@ import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZoneChang
 import { provideRouter } from '@angular/router';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { LoadingInterceptor } from './interceptors/loading.interceptor';
+import { ErrorInterceptor } from './interceptors/error.interceptor';
 import { routes } from './app.routes';
-import { AuthInterceptor } from './interceptors/auth.interceptor';
+import { provideAnimations } from '@angular/platform-browser/animations';
 
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(routes),
+    provideAnimations(),
     provideHttpClient(
-      withInterceptors([AuthInterceptor, LoadingInterceptor]) // gộp vào 1 lần
+      // Đăng ký cả LoadingInterceptor và ErrorInterceptor cho mọi HTTP call toàn cục
+      withInterceptors([LoadingInterceptor, ErrorInterceptor])
     )
   ]
 };
