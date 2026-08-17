@@ -181,6 +181,8 @@ namespace HRM.Services
             debug.ResultCount = results.Count;
             debug.CollisionCount = debug.CandidateCount - debug.ResultCount;
 
+            await EnrichPatientDetailsAsync(results);
+
             return new PagedResult<PatientDto>
             {
                 Items = results,
@@ -317,6 +319,8 @@ namespace HRM.Services
             debug.ResultCount = results.Count;
             debug.CollisionCount = debug.CandidateCount - debug.ResultCount;
 
+            await EnrichPatientDetailsAsync(results);
+
             return new PagedResult<PatientDto>
             {
                 Items = results,
@@ -417,6 +421,8 @@ namespace HRM.Services
             debug.ResultCount = results.Count;
             debug.CollisionCount = debug.CandidateCount - debug.ResultCount;
 
+            await EnrichPatientDetailsAsync(results);
+
             return new PagedResult<PatientDto>
             {
                 Items = results,
@@ -495,6 +501,8 @@ namespace HRM.Services
             debug.CandidateCount = candidateCount; // Thuc te 300.000 bản ghi
             debug.ResultCount = results.Count;
             debug.CollisionCount = debug.CandidateCount - debug.ResultCount;
+
+            await EnrichPatientDetailsAsync(results);
 
             return new PagedResult<PatientDto>
             {
@@ -583,6 +591,62 @@ namespace HRM.Services
             public string I_CCCD { get; set; } = string.Empty;
             public string I_Phone { get; set; } = string.Empty;
             public string I_BankAccount { get; set; } = string.Empty;
+        }
+
+        private async Task EnrichPatientDetailsAsync(List<PatientDto> results)
+        {
+            if (results == null || results.Count == 0) return;
+
+            var idGroup = results.GroupBy(p => p.PatientID).ToDictionary(g => g.Key, g => g.ToList());
+            var ids = idGroup.Keys.ToList();
+
+            using var conn = new SqlConnection(_connectionString);
+            await conn.OpenAsync();
+
+            int batchSize = 1000;
+            for (int offset = 0; offset < ids.Count; offset += batchSize)
+            {
+                var batch = ids.Skip(offset).Take(batchSize).ToList();
+                var sqlBuilder = new StringBuilder();
+                sqlBuilder.Append(@"
+                    SELECT PatientID, Age, Gender, BloodType, Email
+                    FROM dbo.Patient
+                    WHERE PatientID IN (");
+
+                for (int i = 0; i < batch.Count; i++)
+                {
+                    if (i > 0) sqlBuilder.Append(", ");
+                    sqlBuilder.Append($"@p{i}");
+                }
+                sqlBuilder.Append(");");
+
+                using var cmd = new SqlCommand(sqlBuilder.ToString(), conn);
+                for (int i = 0; i < batch.Count; i++)
+                {
+                    cmd.Parameters.AddWithValue($"@p{i}", batch[i]);
+                }
+
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    int pId = reader.GetInt32(0);
+                    if (idGroup.TryGetValue(pId, out var dtoList))
+                    {
+                        int? age = reader.IsDBNull(1) ? null : reader.GetInt32(1);
+                        string? gender = reader.IsDBNull(2) ? null : reader.GetString(2).Trim();
+                        string? bloodType = reader.IsDBNull(3) ? null : reader.GetString(3).Trim();
+                        string? email = reader.IsDBNull(4) ? null : reader.GetString(4).Trim();
+
+                        foreach (var dto in dtoList)
+                        {
+                            dto.Age = age;
+                            dto.Gender = gender;
+                            dto.Blood_Type = bloodType;
+                            dto.Email = email;
+                        }
+                    }
+                }
+            }
         }
 
         #endregion

@@ -3,11 +3,11 @@ using System.Text;
 
 namespace HRM.Helpers.Security
 {
-   
+    /// <summary>
     /// Mock black-box security service dùng để nối backend với database hiện tại.
     /// EncryptData trả Base64 của IV + CipherText, repository sẽ convert sang varbinary khi lưu DB.
     /// GenerateSearchIndex trả Base64 của SHA-256 để repository convert sang varbinary(32).
-
+    /// </summary>
     public class MockSecurityService : ISecurityService
     {
         private const string Salt = "AppFixedSalt_2026";

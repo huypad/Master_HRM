@@ -1,0 +1,63 @@
+2026-07-01 20:21:01.023 +07:00 [INF] Now listening on: http://localhost:5177
+2026-07-01 20:21:01.054 +07:00 [INF] Application started. Press Ctrl+C to shut down.
+2026-07-01 20:21:01.055 +07:00 [INF] Hosting environment: Development
+2026-07-01 20:21:01.055 +07:00 [INF] Content root path: D:\projCuaTwsn\Master_HRM\HRM\HRM
+2026-07-01 20:21:08.330 +07:00 [INF] Request starting HTTP/1.1 GET http://localhost:5177/ - null null
+2026-07-01 20:21:08.371 +07:00 [INF] Request finished HTTP/1.1 GET http://localhost:5177/ - 404 0 null 43.0766ms
+2026-07-01 20:21:08.389 +07:00 [INF] Request reached the end of the middleware pipeline without being handled by application code. Request path: GET http://localhost:5177/, Response status code: 404
+2026-07-01 20:21:14.426 +07:00 [INF] Request starting HTTP/1.1 GET http://localhost:5177/swagger - null null
+2026-07-01 20:21:14.430 +07:00 [INF] Request finished HTTP/1.1 GET http://localhost:5177/swagger - 301 0 null 3.364ms
+2026-07-01 20:21:14.436 +07:00 [INF] Request starting HTTP/1.1 GET http://localhost:5177/swagger/index.html - null null
+2026-07-01 20:21:14.510 +07:00 [INF] Request finished HTTP/1.1 GET http://localhost:5177/swagger/index.html - 200 null text/html;charset=utf-8 73.9286ms
+2026-07-01 20:21:14.532 +07:00 [INF] Request starting HTTP/1.1 GET http://localhost:5177/swagger/swagger-ui.css - null null
+2026-07-01 20:21:14.538 +07:00 [INF] Request starting HTTP/1.1 GET http://localhost:5177/swagger/swagger-ui-bundle.js - null null
+2026-07-01 20:21:14.539 +07:00 [INF] Request starting HTTP/1.1 GET http://localhost:5177/swagger/swagger-ui-standalone-preset.js - null null
+2026-07-01 20:21:14.556 +07:00 [INF] Sending file. Request path: '/swagger-ui-standalone-preset.js'. Physical path: 'N/A'
+2026-07-01 20:21:14.557 +07:00 [INF] Sending file. Request path: '/swagger-ui.css'. Physical path: 'N/A'
+2026-07-01 20:21:14.560 +07:00 [INF] Request finished HTTP/1.1 GET http://localhost:5177/swagger/swagger-ui-standalone-preset.js - 200 230280 text/javascript 21.0629ms
+2026-07-01 20:21:14.560 +07:00 [INF] Request finished HTTP/1.1 GET http://localhost:5177/swagger/swagger-ui.css - 200 152034 text/css 27.7769ms
+2026-07-01 20:21:14.567 +07:00 [INF] Sending file. Request path: '/swagger-ui-bundle.js'. Physical path: 'N/A'
+2026-07-01 20:21:14.569 +07:00 [INF] Request finished HTTP/1.1 GET http://localhost:5177/swagger/swagger-ui-bundle.js - 200 1456926 text/javascript 30.56ms
+2026-07-01 20:21:15.244 +07:00 [INF] Request starting HTTP/1.1 GET http://localhost:5177/swagger/favicon-32x32.png - null null
+2026-07-01 20:21:15.246 +07:00 [INF] Sending file. Request path: '/favicon-32x32.png'. Physical path: 'N/A'
+2026-07-01 20:21:15.247 +07:00 [INF] Request finished HTTP/1.1 GET http://localhost:5177/swagger/favicon-32x32.png - 200 628 image/png 3.159ms
+2026-07-01 20:21:15.415 +07:00 [INF] Request starting HTTP/1.1 GET http://localhost:5177/swagger/v1/swagger.json - null null
+2026-07-01 20:21:15.508 +07:00 [INF] Request finished HTTP/1.1 GET http://localhost:5177/swagger/v1/swagger.json - 200 null application/json;charset=utf-8 92.185ms
+2026-07-01 20:21:25.231 +07:00 [INF] Request starting HTTP/1.1 GET http://localhost:5177/api/nhanvien/search?keyword=a&page=1&pageSize=20&sortDirection=asc&accessMode=public - null null
+2026-07-01 20:21:25.236 +07:00 [INF] Executing endpoint 'HRM.Controllers.NhanVienController.Search (HRM)'
+2026-07-01 20:21:25.268 +07:00 [INF] Route matched with {action = "Search", controller = "NhanVien"}. Executing controller action with signature System.Threading.Tasks.Task`1[Microsoft.AspNetCore.Mvc.IActionResult] Search(System.String, Int32, Int32, System.String, System.String, System.String) on controller HRM.Controllers.NhanVienController (HRM).
+2026-07-01 20:21:26.040 +07:00 [WRN] No store type was specified for the decimal property 'Id_NV' on entity type 'NhanVien'. This will cause values to be silently truncated if they do not fit in the default precision and scale. Explicitly specify the SQL server column type that can accommodate all the values in 'OnModelCreating' using 'HasColumnType', specify precision and scale using 'HasPrecision', or configure a value converter using 'HasConversion'.
+2026-07-01 20:21:26.042 +07:00 [WRN] The decimal property 'Id_NV' is part of a key on entity type 'NhanVien'. If the configured precision and scale don't match the column type in the database, this will cause values to be silently truncated if they do not fit in the default precision and scale. Consider using a different property as the key, or make sure that the database column type matches the model configuration and enable decimal rounding warnings using 'SET NUMERIC_ROUNDABORT ON'.
+2026-07-01 20:21:27.164 +07:00 [INF] Executed DbCommand (150ms) [Parameters=[@__keyword_0_contains='?' (Size = 4000), @__p_1='?' (DbType = Int32), @__p_2='?' (DbType = Int32)], CommandType='"Text"', CommandTimeout='30']
+SELECT [t].[Id_NV], [t].[MaNV], NULL AS [HoTen], [t].[Ngaysinh] AS [NgaySinh], N'****' AS [CMND], [t].[Mobile], [t].[Email]
+FROM [Tbl_Nhanvien] AS [t]
+WHERE ([t].[Disable] IS NULL OR [t].[Disable] = CAST(0 AS bit)) AND (LOWER(COALESCE([t].[MaNV], N'')) LIKE @__keyword_0_contains ESCAPE N'\' OR COALESCE([t].[Mobile], N'') LIKE @__keyword_0_contains ESCAPE N'\' OR LOWER(COALESCE([t].[Email], N'')) LIKE @__keyword_0_contains ESCAPE N'\')
+ORDER BY [t].[Id_NV]
+OFFSET @__p_1 ROWS FETCH NEXT @__p_2 ROWS ONLY
+2026-07-01 20:21:28.328 +07:00 [INF] Executed DbCommand (1,123ms) [Parameters=[@__keyword_0_contains='?' (Size = 4000)], CommandType='"Text"', CommandTimeout='30']
+SELECT COUNT(*)
+FROM [Tbl_Nhanvien] AS [t]
+WHERE ([t].[Disable] IS NULL OR [t].[Disable] = CAST(0 AS bit)) AND (LOWER(COALESCE([t].[MaNV], N'')) LIKE @__keyword_0_contains ESCAPE N'\' OR COALESCE([t].[Mobile], N'') LIKE @__keyword_0_contains ESCAPE N'\' OR LOWER(COALESCE([t].[Email], N'')) LIKE @__keyword_0_contains ESCAPE N'\')
+2026-07-01 20:21:28.333 +07:00 [INF] [PUBLIC SEARCH] Keyword=a | Phase1_DBQuery=1432ms | Phase2_Count=1145ms | Collisions=2580 | Results=20
+2026-07-01 20:21:28.337 +07:00 [INF] Executing OkObjectResult, writing value of type '<>f__AnonymousType0`2[[System.Collections.Generic.List`1[[HRM.DTOs.NhanVienDTO, HRM, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]], System.Private.CoreLib, Version=9.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e],[System.Int32, System.Private.CoreLib, Version=9.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]'.
+2026-07-01 20:21:28.366 +07:00 [INF] Executed action HRM.Controllers.NhanVienController.Search (HRM) in 3093.8122ms
+2026-07-01 20:21:28.368 +07:00 [INF] Executed endpoint 'HRM.Controllers.NhanVienController.Search (HRM)'
+2026-07-01 20:21:28.373 +07:00 [INF] Request finished HTTP/1.1 GET http://localhost:5177/api/nhanvien/search?keyword=a&page=1&pageSize=20&sortDirection=asc&accessMode=public - 200 null application/json; charset=utf-8 3141.6735ms
+2026-07-01 20:26:05.194 +07:00 [INF] Request starting HTTP/1.1 GET http://localhost:5177/api/nhanvien/search?keyword=Tran&page=1&pageSize=20&sortDirection=asc&accessMode=public - null null
+2026-07-01 20:26:05.198 +07:00 [INF] Executing endpoint 'HRM.Controllers.NhanVienController.Search (HRM)'
+2026-07-01 20:26:05.199 +07:00 [INF] Route matched with {action = "Search", controller = "NhanVien"}. Executing controller action with signature System.Threading.Tasks.Task`1[Microsoft.AspNetCore.Mvc.IActionResult] Search(System.String, Int32, Int32, System.String, System.String, System.String) on controller HRM.Controllers.NhanVienController (HRM).
+2026-07-01 20:26:05.230 +07:00 [INF] Executed DbCommand (3ms) [Parameters=[@__keyword_0_contains='?' (Size = 4000), @__p_1='?' (DbType = Int32), @__p_2='?' (DbType = Int32)], CommandType='"Text"', CommandTimeout='30']
+SELECT [t].[Id_NV], [t].[MaNV], NULL AS [HoTen], [t].[Ngaysinh] AS [NgaySinh], N'****' AS [CMND], [t].[Mobile], [t].[Email]
+FROM [Tbl_Nhanvien] AS [t]
+WHERE ([t].[Disable] IS NULL OR [t].[Disable] = CAST(0 AS bit)) AND (LOWER(COALESCE([t].[MaNV], N'')) LIKE @__keyword_0_contains ESCAPE N'\' OR COALESCE([t].[Mobile], N'') LIKE @__keyword_0_contains ESCAPE N'\' OR LOWER(COALESCE([t].[Email], N'')) LIKE @__keyword_0_contains ESCAPE N'\')
+ORDER BY [t].[Id_NV]
+OFFSET @__p_1 ROWS FETCH NEXT @__p_2 ROWS ONLY
+2026-07-01 20:26:05.989 +07:00 [INF] Executed DbCommand (756ms) [Parameters=[@__keyword_0_contains='?' (Size = 4000)], CommandType='"Text"', CommandTimeout='30']
+SELECT COUNT(*)
+FROM [Tbl_Nhanvien] AS [t]
+WHERE ([t].[Disable] IS NULL OR [t].[Disable] = CAST(0 AS bit)) AND (LOWER(COALESCE([t].[MaNV], N'')) LIKE @__keyword_0_contains ESCAPE N'\' OR COALESCE([t].[Mobile], N'') LIKE @__keyword_0_contains ESCAPE N'\' OR LOWER(COALESCE([t].[Email], N'')) LIKE @__keyword_0_contains ESCAPE N'\')
+2026-07-01 20:26:05.991 +07:00 [INF] [PUBLIC SEARCH] Keyword=Tran | Phase1_DBQuery=30ms | Phase2_Count=758ms | Collisions=46 | Results=20
+2026-07-01 20:26:05.993 +07:00 [INF] Executing OkObjectResult, writing value of type '<>f__AnonymousType0`2[[System.Collections.Generic.List`1[[HRM.DTOs.NhanVienDTO, HRM, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]], System.Private.CoreLib, Version=9.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e],[System.Int32, System.Private.CoreLib, Version=9.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]'.
+2026-07-01 20:26:05.995 +07:00 [INF] Executed action HRM.Controllers.NhanVienController.Search (HRM) in 795.2344ms
+2026-07-01 20:26:05.997 +07:00 [INF] Executed endpoint 'HRM.Controllers.NhanVienController.Search (HRM)'
+2026-07-01 20:26:05.998 +07:00 [INF] Request finished HTTP/1.1 GET http://localhost:5177/api/nhanvien/search?keyword=Tran&page=1&pageSize=20&sortDirection=asc&accessMode=public - 200 null application/json; charset=utf-8 803.4676ms

@@ -31,7 +31,8 @@ namespace HRM.Services
             return new
             {
                 items,
-                total
+                total,
+                searchDebug = (SearchDebugInfo?)null
             };
         }
 
@@ -48,7 +49,8 @@ namespace HRM.Services
             return new
             {
                 items,
-                total
+                total,
+                searchDebug = (SearchDebugInfo?)null
             };
         }
 
@@ -60,23 +62,22 @@ namespace HRM.Services
             string? sortDirection
         )
         {
-        // Phase 1: DB Query (plaintext - không có decrypt)
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        var items = await _repo.SearchPublicAsync(keyword, page, pageSize, sortColumn, sortDirection);
-        var phase1Ms = sw.ElapsedMilliseconds;
+            var items = await _repo.SearchPublicAsync(keyword, page, pageSize, sortColumn, sortDirection);
+            var debug = _repo.LastSearchDebug;
 
-        // Phase 2: Count (đếm log)
-        sw.Restart();
-        var total = await _repo.CountSearchPublicAsync(keyword);
-        var phase2Ms = sw.ElapsedMilliseconds;
+            if (debug != null)
+            {
+                _logger.LogInformation(
+                    "[PUBLIC SEARCH] Keyword={Keyword} | Step1={P1}ms | Step2={P2}ms | Total={Total}ms | Candidates={Candidates} | Collisions={Collisions} | Results={Results}",
+                    keyword, debug.Step1Ms, debug.Step2Ms, debug.TotalMs, debug.CandidateCount, debug.CollisionCount, items.Count);
+            }
 
-        int collisionCount = total - items.Count;
-
-        _logger.LogInformation(
-            "[PUBLIC SEARCH] Keyword={Keyword} | Phase1_DBQuery={P1}ms | Phase2_Count={P2}ms | Collisions={Collisions} | Results={Results}",
-            keyword, phase1Ms, phase2Ms, collisionCount, items.Count);
-
-        return new PagedResult<NhanVienDTO> { Items = items, Total = total };
+            return new PagedResult<NhanVienDTO>
+            {
+                Items = items,
+                Total = _repo.LastSearchTotal,
+                SearchDebug = debug
+            };
         }
 
         public async Task<PagedResult<NhanVienDTO>> SearchPrivateAsync(
@@ -87,53 +88,22 @@ namespace HRM.Services
             string? sortDirection
         )
         {
-        keyword = keyword.Trim();
-        var sw = new System.Diagnostics.Stopwatch();
+            var items = await _repo.SearchPrivateAsync(keyword, page, pageSize, sortColumn, sortDirection);
+            var debug = _repo.LastSearchDebug;
 
-        // Phase 1: Querying over encrypted data (SecureIndex n-gram)
-        sw.Restart();
-        var candidateIds = await _repo.SearchCandidateIdsBySecureIndexAsync(keyword);
-        if (!string.IsNullOrWhiteSpace(keyword) && keyword.All(char.IsDigit))
-        {
-            var exactIds = await _repo.FindIdsByCMNDHashAsync(keyword);
-            candidateIds = candidateIds.Union(exactIds).Distinct().ToList();
-        }
-        var phase1Ms = sw.ElapsedMilliseconds;
+            if (debug != null)
+            {
+                _logger.LogInformation(
+                    "[PRIVATE SEARCH] Keyword={Keyword} | Step1={P1}ms | Step2={P2}ms | Total={Total}ms | Candidates={Candidates} | Collisions={Collisions} | Results={Results}",
+                    keyword, debug.Step1Ms, debug.Step2Ms, debug.TotalMs, debug.CandidateCount, debug.CollisionCount, items.Count);
+            }
 
-        // Phase 2: Decryption
-        sw.Restart();
-        var candidateItems = await _repo.GetPrivateByIdsAsync(candidateIds);
-        var phase2Ms = sw.ElapsedMilliseconds;
-
-        // Phase 3: Filter results (in-memory)
-        sw.Restart();
-        var normalizedKeyword = keyword.ToLowerInvariant();
-        IEnumerable<NhanVienDTO> query = candidateItems.Where(x =>
-            ((x.MaNV  ?? "").ToLower().Contains(normalizedKeyword)) ||
-            ((x.HoTen ?? "").ToLower().Contains(normalizedKeyword)) ||
-            ((x.CMND  ?? "").Contains(keyword))                     ||
-            ((x.Mobile?? "").Contains(keyword))                     ||
-            ((x.Email ?? "").ToLower().Contains(normalizedKeyword))
-        );
-        query = ApplySortingPrivate(query, sortColumn, sortDirection);
-        if (string.IsNullOrWhiteSpace(sortColumn))
-            query = query.OrderBy(x => x.Id_NV);
-
-        var filtered = query.ToList();
-        var phase3Ms = sw.ElapsedMilliseconds;
-
-        int collisionCount = candidateIds.Count - filtered.Count;
-
-        _logger.LogInformation(
-            "[PRIVATE SEARCH] Keyword={Keyword} | Phase1_EncryptedQuery={P1}ms | Phase2_Decryption={P2}ms | Phase3_Filter={P3}ms | Candidates={Candidates} | Collisions={Collisions} | Results={Results}",
-            keyword, phase1Ms, phase2Ms, phase3Ms, candidateIds.Count, collisionCount, filtered.Count);
-
-        var paged = filtered
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToList();
-
-        return new PagedResult<NhanVienDTO> { Items = paged, Total = filtered.Count };
+            return new PagedResult<NhanVienDTO>
+            {
+                Items = items,
+                Total = _repo.LastSearchTotal,
+                SearchDebug = debug
+            };
         }
 
         public async Task<NhanVienDTO?> GetByIdPublicAsync(decimal id)
@@ -143,8 +113,6 @@ namespace HRM.Services
 
         public async Task<NhanVienDTO?> GetByIdPrivateAsync(decimal id)
         {
-            // Repository đã decrypt và trả về NhanVienDTO rồi,
-            // service không cần ghép Holot/Ten hay decrypt lại.
             return await _repo.GetByIdPrivateAsync(id);
         }
 
@@ -161,9 +129,6 @@ namespace HRM.Services
                 Email = dto.Email,
                 Disable = false
             };
-
-            // Nếu model có số tài khoản thì bật dòng này.
-            // nv.Sotaikhoan = dto.Sotaikhoan;
 
             return await _repo.AddAsync(nv);
         }
@@ -186,9 +151,6 @@ namespace HRM.Services
                 Email = dto.Email,
                 Disable = false
             };
-
-            // Nếu model có số tài khoản thì bật dòng này.
-            // nv.Sotaikhoan = dto.Sotaikhoan;
 
             await _repo.UpdateAsync(nv);
             return true;

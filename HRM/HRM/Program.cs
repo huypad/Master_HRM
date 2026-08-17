@@ -1,4 +1,5 @@
 using HRM.Data;
+using HRM.Helpers.Security;
 using HRM.Repositories;
 using HRM.Security;
 using HRM.Services;
@@ -30,10 +31,6 @@ builder.Services.AddScoped<HRM.Security.IHybridSecurityService, HRM.Security.Rea
 builder.Services.AddScoped<IPatientService, PatientService>();
 builder.Services.AddScoped<IPatientSearchService, PatientSearchService>();
 
-builder.Services.AddScoped<HRM.Security.IHybridSecurityService, HRM.Security.RealSecurityService>();
-builder.Services.AddScoped<IPatientSearchService, PatientSearchService>();
-builder.Services.AddScoped<IPatientService, PatientService>();
-
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -58,12 +55,13 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 app.UseCors("AllowAll");
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI(c =>
     {
-        c.RoutePrefix = "swagger"; 
+        c.RoutePrefix = "swagger";
     });
 }
 

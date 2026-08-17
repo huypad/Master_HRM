@@ -1,0 +1,17 @@
+version: '3.8'
+services:
+  backend:
+    build:
+      context: ./HRM
+      dockerfile: Dockerfile
+    ports:
+      - "5177:8080" # Cổng ánh xạ ra ngoài cho BE
+    
+  frontend:
+    build:
+      context: ./HRM.UI
+      dockerfile: Dockerfile
+    ports:
+      - "4200:4200" # Cổng ánh xạ ra ngoài cho FE
+    depends_on:
+      - backend
