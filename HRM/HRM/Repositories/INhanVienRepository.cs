@@ -52,6 +52,9 @@ namespace HRM.Repositories
         Task UpdateAsync(NhanVien entity);
         Task SoftDeleteAsync(decimal id);
 
+        Task<List<decimal>> SearchCandidateIdsBySecureIndexAsync(string keyword);
+        Task<List<decimal>> FindIdsByCMNDHashAsync(string cmnd);
+        Task<List<NhanVienDTO>> GetPrivateByIdsAsync(IEnumerable<decimal> ids);
         Task RebuildAllSecureIndexBulkAsync(int batchSize = 1000);
 
         Task MigrateOldPlaintextDataAsync();

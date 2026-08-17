@@ -107,3 +107,52 @@
 .aside-enabled .wrapper {
   margin-left: 0 !important;
 }
+
+/* ========== Angular Material SnackBar / Toast Overlay Fix ========== */
+.cdk-overlay-container {
+  z-index: 99999 !important;
+}
+
+.cdk-overlay-pane {
+  max-width: 90vw !important;
+}
+
+.snackbar-error {
+  .mdc-snackbar__surface,
+  .mat-mdc-snack-bar-container {
+    background-color: #dc3545 !important;
+    color: #ffffff !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 15px rgba(220, 53, 69, 0.4) !important;
+  }
+  .mdc-snackbar__label,
+  .mat-mdc-snack-bar-label {
+    color: #ffffff !important;
+    font-weight: 500 !important;
+  }
+  .mat-mdc-snack-bar-action,
+  .mdc-snackbar__action {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+  }
+}
+
+.snackbar-success {
+  .mdc-snackbar__surface,
+  .mat-mdc-snack-bar-container {
+    background-color: #198754 !important;
+    color: #ffffff !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 15px rgba(25, 135, 84, 0.4) !important;
+  }
+  .mdc-snackbar__label,
+  .mat-mdc-snack-bar-label {
+    color: #ffffff !important;
+    font-weight: 500 !important;
+  }
+  .mat-mdc-snack-bar-action,
+  .mdc-snackbar__action {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+  }
+}

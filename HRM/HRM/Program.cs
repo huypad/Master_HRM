@@ -1,6 +1,7 @@
 using HRM.Data;
 using HRM.Helpers.Security;
 using HRM.Repositories;
+using HRM.Security;
 using HRM.Services;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
@@ -17,10 +18,18 @@ builder.Host.UseSerilog();
 builder.Services.AddDbContext<HrmDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("HRMConnection")));
 
-builder.Services.AddScoped<HRM.Helpers.Security.ISecurityService, HRM.Helpers.Security.MockSecurityService>();
+// Đăng ký Repository và Service cho Nhân viên
 builder.Services.AddScoped<INhanVienRepository, NhanVienRepository>();
 builder.Services.AddScoped<INhanVienService, NhanVienService>();
+
+// Đăng ký Service mã hóa & bảo mật
 builder.Services.AddScoped<HRM.Services.ISecurityService, HRM.Services.SecurityService>();
+builder.Services.AddScoped<HRM.Helpers.Security.ISecurityService, HRM.Helpers.Security.MockSecurityService>();
+builder.Services.AddScoped<HRM.Security.IHybridSecurityService, HRM.Security.RealSecurityService>();
+
+// Đăng ký Service quản lý và tra cứu Bệnh nhân (Patient)
+builder.Services.AddScoped<IPatientService, PatientService>();
+builder.Services.AddScoped<IPatientSearchService, PatientSearchService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

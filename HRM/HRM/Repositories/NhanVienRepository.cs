@@ -78,8 +78,8 @@ namespace HRM.Repositories
 
         public async Task<int> CountPrivateAsync()
         {
-            return await _context.NhanViens
-                .CountAsync(x => x.Disable == false || x.Disable == null);
+            var allItems = await GetAllPrivateAsync();
+            return allItems.Count;
         }
 
         public async Task<List<NhanVienDTO>> GetPagedPublicAsync(
@@ -119,54 +119,20 @@ namespace HRM.Repositories
             LastSearchDebug = null;
             LastSearchTotal = 0;
 
-            var query = _context.NhanViens
-                .AsNoTracking()
-                .Where(x => x.Disable == false || x.Disable == null);
+            var allItems = await GetAllPrivateAsync();
 
-            query = ApplySorting(query, sortColumn, sortDirection);
+            IEnumerable<NhanVienDTO> query = allItems
+                .Where(x => x != null);
+
+            query = ApplySortingPrivate(query, sortColumn, sortDirection);
 
             if (string.IsNullOrWhiteSpace(sortColumn))
                 query = query.OrderBy(x => x.Id_NV);
 
-            var pagedEntities = await query
+            return query
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .ToListAsync();
-
-            var result = new List<NhanVienDTO>();
-            foreach (var entity in pagedEntities)
-            {
-                try
-                {
-                    var holot = (entity.I_Holot == null || entity.I_Holot.Length == 0)
-                        ? string.Empty
-                        : _securityService.DecryptData(Convert.ToBase64String(entity.I_Holot));
-                    var ten = (entity.I_Ten == null || entity.I_Ten.Length == 0)
-                        ? string.Empty
-                        : _securityService.DecryptData(Convert.ToBase64String(entity.I_Ten));
-                    var cmnd = (entity.I_CMND == null || entity.I_CMND.Length == 0)
-                        ? string.Empty
-                        : _securityService.DecryptData(Convert.ToBase64String(entity.I_CMND));
-
-                    result.Add(new NhanVienDTO
-                    {
-                        Id_NV = entity.Id_NV,
-                        MaNV = entity.MaNV,
-                        HoTen = $"{holot} {ten}".Trim(),
-                        NgaySinh = entity.Ngaysinh,
-                        CMND = cmnd,
-                        Mobile = string.IsNullOrWhiteSpace(entity.Mobile) ? " " : entity.Mobile,
-                        Email = string.IsNullOrWhiteSpace(entity.Email) ? " " : entity.Email
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Decrypt lỗi tại Id_NV = {entity.Id_NV}. Lỗi: {ex.Message}");
-                    continue;
-                }
-            }
-
-            return result;
+                .ToList();
         }
 
         public Task<int> CountSearchPublicAsync(string keyword)
@@ -291,6 +257,65 @@ namespace HRM.Repositories
         {
             var items = await GetPrivateByIdsAsync(new List<decimal> { id });
             return items.FirstOrDefault();
+        }
+
+        private NhanVienDTO? ReadPrivateDto(IDataRecord reader)
+        {
+            var id = Convert.ToDecimal(reader["Id_NV"]);
+
+            try
+            {
+                var holot = DecryptDbValue(reader["I_Holot"]);
+                var ten = DecryptDbValue(reader["I_Ten"]);
+                var cmnd = DecryptDbValue(reader["I_CMND"]);
+
+                return new NhanVienDTO
+                {
+                    Id_NV = id,
+                    MaNV = ReadString(reader, "MaNV"),
+                    HoTen = $"{holot} {ten}".Trim(),
+                    NgaySinh = ReadDateTime(reader, "Ngaysinh"),
+                    CMND = cmnd,
+                    Mobile = ReadString(reader, "Mobile"),
+                    Email = ReadString(reader, "Email")
+                };
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Decrypt lỗi tại Id_NV = {id}. Lỗi: {ex.Message}");
+                return null;
+            }
+        }
+
+        public async Task<List<decimal>> FindIdsByCMNDHashAsync(string cmnd)
+        {
+            var result = new List<decimal>();
+            var normalizedCmnd = NormalizeDigits(cmnd);
+            var hash = SearchIndexToDbBytes(normalizedCmnd, "CMND");
+
+            if (hash == null)
+                return result;
+
+            var conn = _context.Database.GetDbConnection();
+            if (conn.State != ConnectionState.Open)
+                await conn.OpenAsync();
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "sp_Tbl_Nhanvien_FindIdsByCMNDHash";
+            cmd.CommandType = CommandType.StoredProcedure;
+
+            cmd.Parameters.Add(new SqlParameter("@CMNDHash", SqlDbType.VarBinary, 32)
+            {
+                Value = hash
+            });
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                result.Add(Convert.ToDecimal(reader["Id_NV"]));
+            }
+
+            return result.Distinct().ToList();
         }
 
         public async Task<decimal?> AddAsync(NhanVien entity)
@@ -505,7 +530,7 @@ namespace HRM.Repositories
             return result;
         }
 
-        private async Task<List<NhanVienDTO>> GetPrivateByIdsAsync(IEnumerable<decimal> ids)
+        public async Task<List<NhanVienDTO>> GetPrivateByIdsAsync(IEnumerable<decimal> ids)
         {
             var idList = ids?.Distinct().ToList() ?? new List<decimal>();
 
@@ -536,67 +561,7 @@ namespace HRM.Repositories
             return result;
         }
 
-        private NhanVienDTO? ReadPrivateDto(IDataRecord reader)
-        {
-            var id = Convert.ToDecimal(reader["Id_NV"]);
-
-            try
-            {
-                var holot = DecryptDbValue(reader["I_Holot"]);
-                var ten = DecryptDbValue(reader["I_Ten"]);
-                var cmnd = DecryptDbValue(reader["I_CMND"]);
-
-                return new NhanVienDTO
-                {
-                    Id_NV = id,
-                    MaNV = ReadString(reader, "MaNV"),
-                    HoTen = $"{holot} {ten}".Trim(),
-                    NgaySinh = ReadDateTime(reader, "Ngaysinh"),
-                    CMND = cmnd,
-                    Mobile = ReadString(reader, "Mobile"),
-                    Email = ReadString(reader, "Email")
-                };
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Decrypt lỗi tại Id_NV = {id}. Lỗi: {ex.Message}");
-                return null;
-            }
-        }
-
-        private async Task<List<decimal>> FindIdsByCMNDHashAsync(string cmnd)
-        {
-            var result = new List<decimal>();
-            var normalizedCmnd = NormalizeDigits(cmnd);
-            var hash = SearchIndexToDbBytes(normalizedCmnd, "CMND");
-
-            if (hash == null)
-                return result;
-
-            var conn = _context.Database.GetDbConnection();
-            if (conn.State != ConnectionState.Open)
-                await conn.OpenAsync();
-
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "sp_Tbl_Nhanvien_FindIdsByCMNDHash";
-            cmd.CommandType = CommandType.StoredProcedure;
-
-            cmd.Parameters.Add(new SqlParameter("@CMNDHash", SqlDbType.VarBinary, 32)
-            {
-                Value = hash
-            });
-
-            using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-            {
-                result.Add(Convert.ToDecimal(reader["Id_NV"]));
-            }
-
-            return result.Distinct().ToList();
-        }
-
-
-        private async Task<List<decimal>> SearchCandidateIdsBySecureIndexAsync(string keyword)
+        public async Task<List<decimal>> SearchCandidateIdsBySecureIndexAsync(string keyword)
         {
             var allIds = new List<decimal>();
             var terms = BuildNameSearchTerms(keyword);

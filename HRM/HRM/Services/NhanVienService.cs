@@ -3,16 +3,19 @@ using HRM.Entities;
 using HRM.Model;
 using HRM.Model.NhanVien;
 using HRM.Repositories;
+using Microsoft.Extensions.Logging; 
 
 namespace HRM.Services
 {
     public class NhanVienService : INhanVienService
     {
         private readonly INhanVienRepository _repo;
+        private readonly ILogger<NhanVienService> _logger;
 
-        public NhanVienService(INhanVienRepository repo)
+        public NhanVienService(INhanVienRepository repo, ILogger<NhanVienService> logger)
         {
             _repo = repo;
+            _logger = logger;
         }
 
         public async Task<object> GetPagedPublicAsync(
@@ -60,18 +63,13 @@ namespace HRM.Services
         )
         {
             var items = await _repo.SearchPublicAsync(keyword, page, pageSize, sortColumn, sortDirection);
-
             var debug = _repo.LastSearchDebug;
+
             if (debug != null)
             {
-                Console.WriteLine($"\n========================================");
-                Console.WriteLine($"[LOG JMETER] API: SearchPublicAsync (200k data)");
-                Console.WriteLine($"- Thời gian lọc thô (B1): {debug.Step1Ms} ms");
-                Console.WriteLine($"- Thời gian giải mã & lọc tinh (B2): {debug.Step2Ms} ms");
-                Console.WriteLine($"- Tổng thời gian: {debug.TotalMs} ms");
-                Console.WriteLine($"- Số lượng ứng viên: {debug.CandidateCount} dòng");
-                Console.WriteLine($"- Đụng độ: {debug.CollisionCount} bản ghi");
-                Console.WriteLine($"========================================\n");
+                _logger.LogInformation(
+                    "[PUBLIC SEARCH] Keyword={Keyword} | Step1={P1}ms | Step2={P2}ms | Total={Total}ms | Candidates={Candidates} | Collisions={Collisions} | Results={Results}",
+                    keyword, debug.Step1Ms, debug.Step2Ms, debug.TotalMs, debug.CandidateCount, debug.CollisionCount, items.Count);
             }
 
             return new PagedResult<NhanVienDTO>
@@ -91,18 +89,13 @@ namespace HRM.Services
         )
         {
             var items = await _repo.SearchPrivateAsync(keyword, page, pageSize, sortColumn, sortDirection);
-
             var debug = _repo.LastSearchDebug;
+
             if (debug != null)
             {
-                Console.WriteLine($"\n========================================");
-                Console.WriteLine($"[LOG JMETER] API: SearchPrivateAsync (200k data)");
-                Console.WriteLine($"- Thời gian lọc thô (B1): {debug.Step1Ms} ms");
-                Console.WriteLine($"- Thời gian giải mã & lọc tinh (B2): {debug.Step2Ms} ms");
-                Console.WriteLine($"- Tổng thời gian: {debug.TotalMs} ms");
-                Console.WriteLine($"- Số lượng ứng viên: {debug.CandidateCount} dòng");
-                Console.WriteLine($"- Đụng độ: {debug.CollisionCount} bản ghi");
-                Console.WriteLine($"========================================\n");
+                _logger.LogInformation(
+                    "[PRIVATE SEARCH] Keyword={Keyword} | Step1={P1}ms | Step2={P2}ms | Total={Total}ms | Candidates={Candidates} | Collisions={Collisions} | Results={Results}",
+                    keyword, debug.Step1Ms, debug.Step2Ms, debug.TotalMs, debug.CandidateCount, debug.CollisionCount, items.Count);
             }
 
             return new PagedResult<NhanVienDTO>
@@ -181,6 +174,28 @@ namespace HRM.Services
         public async Task MigrateOldPlaintextDataAsync()
         {
             await _repo.MigrateOldPlaintextDataAsync();
+        }
+
+        private IEnumerable<NhanVienDTO> ApplySortingPrivate(
+            IEnumerable<NhanVienDTO> query,
+            string? sortColumn,
+            string? sortDirection)
+        {
+            if (string.IsNullOrWhiteSpace(sortColumn))
+                return query;
+
+            bool isDesc = string.Equals(sortDirection, "desc", StringComparison.OrdinalIgnoreCase);
+
+            return sortColumn.ToLower() switch
+            {
+                "manv"      => isDesc ? query.OrderByDescending(x => x.MaNV)      : query.OrderBy(x => x.MaNV),
+                "hoten"     => isDesc ? query.OrderByDescending(x => x.HoTen)     : query.OrderBy(x => x.HoTen),
+                "cmnd"      => isDesc ? query.OrderByDescending(x => x.CMND)      : query.OrderBy(x => x.CMND),
+                "mobile"    => isDesc ? query.OrderByDescending(x => x.Mobile)    : query.OrderBy(x => x.Mobile),
+                "email"     => isDesc ? query.OrderByDescending(x => x.Email)     : query.OrderBy(x => x.Email),
+                "ngaysinh"  => isDesc ? query.OrderByDescending(x => x.NgaySinh)  : query.OrderBy(x => x.NgaySinh),
+                _           => query
+            };
         }
     }
 }
