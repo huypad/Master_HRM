@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -23,6 +23,12 @@ namespace HRM.Common
         public static byte[] ComputeHashForGram(string gram)
         {
             return ComputeSha256(Salt + gram);
+        }
+
+        public static int GetDeterministicHashCode(string gram)
+        {
+            byte[] hashBytes = ComputeHashForGram(gram);
+            return BitConverter.ToInt32(hashBytes, 0);
         }
 
         public static string NormalizeForSearch(string value)

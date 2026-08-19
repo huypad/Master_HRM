@@ -1,10 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.RegularExpressions;
-using HRM.Common;
-using HRM.Helpers.Security;
 
 namespace HRM.Security
 {
@@ -12,13 +10,14 @@ namespace HRM.Security
     /// Triển khai dịch vụ bảo mật lai (Hybrid Security) cho HealthcareDB1.
     /// - Mã hóa/Giải mã: AES-256 (IV 16 byte ở đầu ciphertext, PKCS7).
     /// - Chỉ mục tra cứu chính xác: HMAC-SHA256 (Hex 64 ký tự).
-    /// - Chỉ mục tra cứu mờ: MinHash LSH (16 Hash Functions, 4 Bands, 4 Rows).
+    /// - Chỉ mục tra cứu mờ: MinHash LSH Tri-gram (5 Hash Functions, seeds: 13,27,31,47,59).
 
     public class RealSecurityService : IHybridSecurityService
     {
         // Khóa bí mật 256-bit (32 bytes) cho AES và HMAC
-        private static readonly byte[] AES_KEY = Encoding.UTF8.GetBytes("HRM_MASTER_KEY_32BYTES_2026_LEADER_SEC!");
-        private static readonly byte[] HMAC_KEY = Encoding.UTF8.GetBytes("HRM_HMAC_INDEX_KEY_32BYTES_2026_LEADER!");
+        // .Take(32): đảm bảo đúng 32 bytes — AES-256 yêu cầu key length 16/24/32
+        private static readonly byte[] AES_KEY  = Encoding.UTF8.GetBytes("HRM_MASTER_KEY_32BYTES_2026_LEADER_SEC!").Take(32).ToArray();
+        private static readonly byte[] HMAC_KEY = Encoding.UTF8.GetBytes("HRM_HMAC_INDEX_KEY_32BYTES_2026_LEADER!").Take(32).ToArray();
 
         #region IHybridSecurityService Implementation
 
@@ -51,42 +50,65 @@ namespace HRM.Security
 
         /// Giải mã dữ liệu AES-256 từ chuỗi Base64 chứa [IV (16B) + CipherText (NB)].
 
+        private static readonly System.Threading.ThreadLocal<Aes> _aesLocal = new System.Threading.ThreadLocal<Aes>(() => {
+            var aes = Aes.Create();
+            aes.Key = AES_KEY;
+            aes.Mode = CipherMode.CBC;
+            aes.Padding = PaddingMode.PKCS7;
+            return aes;
+        });
+
         public string DecryptData(string cipherText)
         {
             if (string.IsNullOrEmpty(cipherText)) return string.Empty;
 
-            // Nếu dữ liệu đã là PlainText
             if (!cipherText.StartsWith("BKT_") && !IsBase64String(cipherText))
             {
                 return cipherText;
             }
 
+            byte[] fullCipher = null;
             try
             {
-                byte[] fullCipher = Convert.FromBase64String(cipherText);
-                
-                // Nếu độ dài nhỏ hơn 16 bytes IV, decode dạng UTF-8/ASCII Base64
-                if (fullCipher.Length < 16)
-                {
-                    string utf8Str = Encoding.UTF8.GetString(fullCipher).Replace("\0", "").Trim();
-                    if (!string.IsNullOrEmpty(utf8Str) && utf8Str.All(c => !char.IsControl(c) || c == ' ' || c == '\t'))
-                    {
-                        return utf8Str;
-                    }
-                    return cipherText;
-                }
+                fullCipher = Convert.FromBase64String(cipherText);
+            }
+            catch
+            {
+                return cipherText;
+            }
 
-                // Tách IV (16 bytes đầu) và CipherText (phần còn lại)
+            // 1. Kiểm tra xem đây có phải là Dữ liệu mẫu (Seed Data) dạng chuỗi thuần hay không
+            // Tránh việc ném Exception trong AES decryption (gây nghẽn CPU khi chạy debug)
+            try
+            {
+                // Thử decode UTF-8
+                string rawStr = Encoding.UTF8.GetString(fullCipher).Replace("\0", "").Trim();
+                if (!string.IsNullOrEmpty(rawStr) && !rawStr.Contains('\uFFFD') && rawStr.All(c => !char.IsControl(c) || c == ' ' || c == '\t'))
+                {
+                    return rawStr;
+                }
+                
+                // Thử decode UTF-16 (Dữ liệu N'String' trong SQL Server)
+                string utf16Str = Encoding.Unicode.GetString(fullCipher).Replace("\0", "").Trim();
+                if (!string.IsNullOrEmpty(utf16Str) && !utf16Str.Contains('\uFFFD') && utf16Str.All(c => !char.IsControl(c) || c == ' ' || c == '\t'))
+                {
+                    return utf16Str;
+                }
+            }
+            catch { }
+
+            // 2. Nếu không phải là Seed Data hợp lệ, thì đây đích thị là dữ liệu đã được mã hóa AES (Cipher text)
+            try
+            {
+                if (fullCipher.Length < 16) return cipherText;
+
                 byte[] iv = new byte[16];
                 byte[] cipher = new byte[fullCipher.Length - 16];
                 Buffer.BlockCopy(fullCipher, 0, iv, 0, 16);
                 Buffer.BlockCopy(fullCipher, 16, cipher, 0, cipher.Length);
 
-                using var aes = Aes.Create();
-                aes.Key = AES_KEY;
+                var aes = _aesLocal.Value;
                 aes.IV = iv;
-                aes.Mode = CipherMode.CBC;
-                aes.Padding = PaddingMode.PKCS7;
 
                 using var decryptor = aes.CreateDecryptor();
                 byte[] decryptedBytes = decryptor.TransformFinalBlock(cipher, 0, cipher.Length);
@@ -95,19 +117,7 @@ namespace HRM.Security
             }
             catch
             {
-                // Nếu chuỗi là Base64 của UTF-8/ASCII chưa mã hóa AES
-                try
-                {
-                    byte[] rawBytes = Convert.FromBase64String(cipherText);
-                    string rawStr = Encoding.UTF8.GetString(rawBytes).Replace("\0", "").Trim();
-                    if (!string.IsNullOrEmpty(rawStr) && rawStr.All(c => !char.IsControl(c) || c == ' ' || c == '\t'))
-                    {
-                        return rawStr;
-                    }
-                }
-                catch { }
-
-                return cipherText;
+                return cipherText; // Fallback
             }
         }
 
@@ -126,51 +136,55 @@ namespace HRM.Security
         }
 
     
-        /// Tạo chỉ mục tìm kiếm mờ MinHash LSH (16 hash functions, split thành 4 bands x 4 rows).
-        /// Trả về chuỗi đại diện cho LSH buckets.
+        /// LSH + TRI-GRAM: Tạo chỉ mục tìm kiếm mờ (Fuzzy Index) theo thuật toán Leader.
+        /// Tri-gram (n=3) + 5 MinHash functions (seeds: 13,27,31,47,59).
+        /// Output: "BKT_V2_h0_h1_h2_h3_h4" — 5 MinHash values dùng làm bucket keys.
 
-        public string GenerateFuzzyIndex(string plainText)
+        public string GenerateFuzzyIndex(string rawText)
         {
-            if (string.IsNullOrWhiteSpace(plainText)) return string.Empty;
+            if (string.IsNullOrEmpty(rawText)) return string.Empty;
 
-            // 1. Chuẩn hóa & tạo Bi-gram n-grams
-            string normalized = SecurityIndexHelper.NormalizeForSearch(plainText);
-            var ngrams = SecurityIndexHelper.BuildNgrams(normalized, 2);
+            // Bước 1: Chuẩn hóa — viết thường và xóa khoảng trắng
+            string normalized = rawText.ToLower().Replace(" ", "");
 
-            if (ngrams.Count == 0) return string.Empty;
-
-            // 2. Tính MinHash Signature (16 giá trị int min)
-            int[] minHashSig = new int[16];
-            for (int i = 0; i < 16; i++)
+            // CẢI TIẾN 1: Đổi từ Bi-gram (n=2) sang Tri-gram (n=3)
+            // Nếu chuỗi ngắn hơn 3 ký tự (ví dụ: tên "An" -> "an"), giữ nguyên chuỗi
+            var nGrams = new HashSet<string>();
+            if (normalized.Length < 3)
             {
-                int minVal = int.MaxValue;
-                int a = (i + 1) * 3 + 7;
-                int b = (i + 1) * 5 + 11;
-
-                foreach (var gram in ngrams)
+                nGrams.Add(normalized);
+            }
+            else
+            {
+                for (int i = 0; i < normalized.Length - 2; i++)
                 {
-                    int h = Math.Abs((gram.GetHashCode() * a + b) % 2147483647);
-                    if (h < minVal) minVal = h;
+                    nGrams.Add(normalized.Substring(i, 3));
                 }
-                minHashSig[i] = minVal;
             }
 
-            // 3. Chia 16 hash thành 4 Bands, mỗi Band 4 rows -> LSH Bucket Keys
-            var buckets = new string[4];
-            for (int band = 0; band < 4; band++)
+            // CẢI TIẾN 2: Tăng số lượng hàm băm MinHash từ 16 lên 5 (seeds mới)
+            // Sử dụng XOR thay vì công thức tuyến tính để giảm collision
+            int[] seeds = { 13, 27, 31, 47, 59 };
+            var minHashes = new int[seeds.Length];
+
+            for (int i = 0; i < seeds.Length; i++)
             {
-                int h1 = minHashSig[band * 4];
-                int h2 = minHashSig[band * 4 + 1];
-                int h3 = minHashSig[band * 4 + 2];
-                int h4 = minHashSig[band * 4 + 3];
+                int minHash = int.MaxValue;
 
-                string bandStr = $"{h1}_{h2}_{h3}_{h4}";
-                using var md5 = MD5.Create();
-                byte[] bHash = md5.ComputeHash(Encoding.UTF8.GetBytes(bandStr));
-                buckets[band] = Convert.ToHexString(bHash).Substring(0, 8); // 8 char Bucket ID
+                foreach (var gram in nGrams)
+                {
+                    int hash = HRM.Common.SecurityIndexHelper.GetDeterministicHashCode(gram) ^ seeds[i];
+
+                    if (hash < minHash)
+                    {
+                        minHash = hash;
+                    }
+                }
+
+                minHashes[i] = minHash;
             }
 
-            return string.Join(";", buckets);
+            return "BKT_V2_" + string.Join("_", minHashes);
         }
 
         #endregion

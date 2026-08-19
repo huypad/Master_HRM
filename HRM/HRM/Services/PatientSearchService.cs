@@ -212,68 +212,45 @@ namespace HRM.Services
             string cleanKw = keyword.Trim();
             string normalizedKw = SecurityIndexHelper.NormalizeForSearch(cleanKw).Replace("\0", "").Trim();
 
-            // 1. TÍNH BUCKET CHÍNH XÁC THEO THUẬT TOÁN BI-GRAM & TỔNG BYTE UTF-8 % 64
-            var bucketSet = new HashSet<int>();
-            
-            // Bucket cho toàn bộ từ khóa nguyên bản và từ khóa chuẩn hóa
-            bucketSet.Add(GetUtf8Bucket(cleanKw));
-            bucketSet.Add(GetUtf8Bucket(normalizedKw));
-            bucketSet.Add(32); // Primary bucket in HealthcareDB1 for Vietnamese names like Mạc Thanh Trâm
-
-            // Bucket cho các Bi-gram (n=2) của tên nguyên bản
-            var bgAccented = SecurityIndexHelper.BuildNgrams(cleanKw, 2);
-            foreach (var bg in bgAccented)
-            {
-                bucketSet.Add(GetUtf8Bucket(bg));
-            }
-
-            // Bucket cho các Bi-gram (n=2) của tên đã chuẩn hóa
-            var bgNorm = SecurityIndexHelper.BuildNgrams(normalizedKw, 2);
-            foreach (var bg in bgNorm)
-            {
-                bucketSet.Add(GetUtf8Bucket(bg));
-            }
-
-            // Bucket cho các từ đơn
-            var words = cleanKw.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            foreach (var word in words)
-            {
-                bucketSet.Add(GetUtf8Bucket(word));
-                bucketSet.Add(GetUtf8Bucket(SecurityIndexHelper.NormalizeForSearch(word)));
-            }
+            // 1. TÍNH BUCKET THEO THUẬT TOÁN MỚI: GenerateFuzzyIndex → 5 MinHash values
+            // Cùng quy ước với phía INSERT (PatientService.CreateAsync / UpdateAsync)
+            string fuzzyStr = _securityService.GenerateFuzzyIndex(cleanKw);
+            int[] searchBuckets = ParseMinHashBuckets(fuzzyStr);
 
             // 2. Step 1: SQL Index Seek Query (GramBucket IN (@Buckets))
             var candidateIds = new List<int>();
             var swStep1 = Stopwatch.StartNew();
 
-            using (var conn = new SqlConnection(_connectionString))
+            if (searchBuckets.Length > 0)
             {
-                await conn.OpenAsync();
-
-                var sqlBuilder = new StringBuilder();
-                sqlBuilder.Append(@"
-                    SELECT DISTINCT PatientID
-                    FROM dbo.BitGramIndex_Patient
-                    WHERE GramBucket IN (");
-
-                var bList = bucketSet.ToList();
-                for (int i = 0; i < bList.Count; i++)
+                using (var conn = new SqlConnection(_connectionString))
                 {
-                    if (i > 0) sqlBuilder.Append(", ");
-                    sqlBuilder.Append($"@b{i}");
-                }
-                sqlBuilder.Append(");");
+                    await conn.OpenAsync();
 
-                using var cmd = new SqlCommand(sqlBuilder.ToString(), conn);
-                for (int i = 0; i < bList.Count; i++)
-                {
-                    cmd.Parameters.AddWithValue($"@b{i}", bList[i]);
-                }
+                    var sqlBuilder = new StringBuilder();
+                    sqlBuilder.Append(@"
+                        SELECT DISTINCT PatientID
+                        FROM dbo.BitGramIndex_Patient
+                        WHERE GramBucket IN (");
 
-                using var reader = await cmd.ExecuteReaderAsync();
-                while (await reader.ReadAsync())
-                {
-                    candidateIds.Add(reader.GetInt32(0));
+                    for (int i = 0; i < searchBuckets.Length; i++)
+                    {
+                        if (i > 0) sqlBuilder.Append(", ");
+                        sqlBuilder.Append($"@b{i}");
+                    }
+                    sqlBuilder.Append(");");
+
+                    using var cmd = new SqlCommand(sqlBuilder.ToString(), conn);
+                    for (int i = 0; i < searchBuckets.Length; i++)
+                    {
+                        cmd.Parameters.AddWithValue($"@b{i}", searchBuckets[i]);
+                    }
+
+                    using var reader = await cmd.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
+                    {
+                        candidateIds.Add(reader.GetInt32(0));
+                    }
                 }
             }
 
@@ -291,7 +268,7 @@ namespace HRM.Services
 
                 foreach (var row in candidatesData)
                 {
-                    string decName = row.I_Name.Replace("\0", "").Trim();
+                    string decName = _securityService.DecryptData(row.I_Name).Replace("\0", "").Trim();
                     if (string.IsNullOrEmpty(decName)) continue;
 
                     string normalizedDecryptedName = SecurityIndexHelper.NormalizeForSearch(decName).Replace("\0", "").Trim();
@@ -329,15 +306,24 @@ namespace HRM.Services
             };
         }
 
-        private static int GetUtf8Bucket(string text)
+        private static int[] ParseMinHashBuckets(string fuzzyBucketStr)
         {
-            if (string.IsNullOrEmpty(text)) return 0;
-            int sum = 0;
-            foreach (byte b in Encoding.UTF8.GetBytes(text))
+            const string prefix = "BKT_V2_";
+            if (string.IsNullOrEmpty(fuzzyBucketStr) || !fuzzyBucketStr.StartsWith(prefix))
+                return Array.Empty<int>();
+
+            string rest = fuzzyBucketStr.Substring(prefix.Length);
+            if (string.IsNullOrEmpty(rest)) return Array.Empty<int>();
+
+            // Số âm có dạng "-123456", không chứa "_", nên Split("_") vẫn đúng
+            var parts = rest.Split(new char[] { '_' }, StringSplitOptions.RemoveEmptyEntries);
+            var result = new List<int>();
+            foreach (var part in parts)
             {
-                sum += b;
+                if (int.TryParse(part, out int val))
+                    result.Add(val);
             }
-            return sum % 64;
+            return result.ToArray();
         }
 
         #endregion
@@ -472,7 +458,7 @@ namespace HRM.Services
                 {
                     candidateCount++;
                     var row = ReadEncryptedRow(reader);
-                    string decName = row.I_Name.Replace("\0", "").Trim();
+                    string decName = _securityService.DecryptData(row.I_Name).Replace("\0", "").Trim();
 
                     if (!string.IsNullOrEmpty(decName))
                     {
@@ -523,20 +509,11 @@ namespace HRM.Services
             byte[] phoneBytes = reader.IsDBNull(3) ? Array.Empty<byte>() : (byte[])reader.GetValue(3);
             byte[] bankBytes = reader.IsDBNull(4) ? Array.Empty<byte>() : (byte[])reader.GetValue(4);
 
-            string nameStr = string.Empty;
-            if (nameBytes.Length > 0)
-            {
-                nameStr = Encoding.Unicode.GetString(nameBytes).Replace("\0", "").Trim();
-                if (string.IsNullOrEmpty(nameStr) || nameStr.Contains('\uFFFD'))
-                {
-                    try { nameStr = Encoding.UTF8.GetString(nameBytes).Replace("\0", "").Trim(); } catch { }
-                }
-            }
 
             return new EncryptedPatientRow
             {
                 PatientID = reader.GetInt32(0),
-                I_Name = nameStr,
+                I_Name = nameBytes.Length > 0 ? Convert.ToBase64String(nameBytes) : string.Empty,
                 I_CCCD = cccdBytes.Length > 0 ? Convert.ToBase64String(cccdBytes) : string.Empty,
                 I_Phone = phoneBytes.Length > 0 ? Convert.ToBase64String(phoneBytes) : string.Empty,
                 I_BankAccount = bankBytes.Length > 0 ? Convert.ToBase64String(bankBytes) : string.Empty

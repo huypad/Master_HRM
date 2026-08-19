@@ -190,21 +190,24 @@ namespace HRM.Services
                 }
 
                 // 3. Sinh BitGram / LSH Bucket Index va Insert vao BitGramIndex_Patient
+                // Thuật toán mới: 5 MinHash buckets riêng lẻ (GramPosition 0-4) thay vì 1 bucket GetHashCode
                 string fuzzyBucketStr = _securityService.GenerateFuzzyIndex(nameStr);
                 if (!string.IsNullOrEmpty(fuzzyBucketStr))
                 {
-                    int bucketInt = Math.Abs(fuzzyBucketStr.GetHashCode());
+                    int[] buckets = ParseMinHashBuckets(fuzzyBucketStr);
 
                     string insertBitGramSql = @"
                         INSERT INTO dbo.BitGramIndex_Patient (PatientID, GramBucket, GramPosition)
                         VALUES (@PatientID, @GramBucket, @GramPosition);";
 
-                    using var cmd = new SqlCommand(insertBitGramSql, conn, tx);
-                    cmd.Parameters.AddWithValue("@PatientID", newId);
-                    cmd.Parameters.AddWithValue("@GramBucket", bucketInt);
-                    cmd.Parameters.AddWithValue("@GramPosition", 0);
-
-                    await cmd.ExecuteNonQueryAsync();
+                    for (int pos = 0; pos < buckets.Length; pos++)
+                    {
+                        using var cmd = new SqlCommand(insertBitGramSql, conn, tx);
+                        cmd.Parameters.AddWithValue("@PatientID", newId);
+                        cmd.Parameters.AddWithValue("@GramBucket", buckets[pos]);
+                        cmd.Parameters.AddWithValue("@GramPosition", pos);
+                        await cmd.ExecuteNonQueryAsync();
+                    }
                 }
 
                 await tx.CommitAsync();
@@ -314,21 +317,24 @@ namespace HRM.Services
                     await cmd.ExecuteNonQueryAsync();
                 }
 
+                // 3. Rebuild BitGram Index — 5 MinHash buckets theo thuật toán mới
                 string fuzzyBucketStr = _securityService.GenerateFuzzyIndex(nameStr);
                 if (!string.IsNullOrEmpty(fuzzyBucketStr))
                 {
-                    int bucketInt = Math.Abs(fuzzyBucketStr.GetHashCode());
+                    int[] buckets = ParseMinHashBuckets(fuzzyBucketStr);
 
                     string insertBitGramSql = @"
                         INSERT INTO dbo.BitGramIndex_Patient (PatientID, GramBucket, GramPosition)
                         VALUES (@Id, @GramBucket, @GramPosition);";
 
-                    using var cmd = new SqlCommand(insertBitGramSql, conn, tx);
-                    cmd.Parameters.AddWithValue("@Id", id);
-                    cmd.Parameters.AddWithValue("@GramBucket", bucketInt);
-                    cmd.Parameters.AddWithValue("@GramPosition", 0);
-
-                    await cmd.ExecuteNonQueryAsync();
+                    for (int pos = 0; pos < buckets.Length; pos++)
+                    {
+                        using var cmd = new SqlCommand(insertBitGramSql, conn, tx);
+                        cmd.Parameters.AddWithValue("@Id", id);
+                        cmd.Parameters.AddWithValue("@GramBucket", buckets[pos]);
+                        cmd.Parameters.AddWithValue("@GramPosition", pos);
+                        await cmd.ExecuteNonQueryAsync();
+                    }
                 }
 
                 await tx.CommitAsync();
@@ -382,6 +388,30 @@ namespace HRM.Services
                 await tx.RollbackAsync();
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Parse chuỗi "BKT_V2_h0_h1_h2_h3_h4" thành mảng 5 MinHash int values.
+        /// Dùng để lưu 5 bucket riêng lẻ vào BitGramIndex_Patient (GramPosition 0-4).
+        /// </summary>
+        private static int[] ParseMinHashBuckets(string fuzzyBucketStr)
+        {
+            const string prefix = "BKT_V2_";
+            if (string.IsNullOrEmpty(fuzzyBucketStr) || !fuzzyBucketStr.StartsWith(prefix))
+                return Array.Empty<int>();
+
+            string rest = fuzzyBucketStr.Substring(prefix.Length);
+            if (string.IsNullOrEmpty(rest)) return Array.Empty<int>();
+
+            // Số âm có dạng "-123456", không chứa "_", nên Split("_") vẫn đúng
+            var parts = rest.Split(new char[] { '_' }, StringSplitOptions.RemoveEmptyEntries);
+            var result = new List<int>();
+            foreach (var part in parts)
+            {
+                if (int.TryParse(part, out int val))
+                    result.Add(val);
+            }
+            return result.ToArray();
         }
     }
 }
