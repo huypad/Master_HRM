@@ -195,6 +195,7 @@ namespace HRM.Services
 
         public async Task<PagedResult<PatientDto>> SearchFuzzyAsync(string keyword)
         {
+
             var swTotal = Stopwatch.StartNew();
             var debug = new SearchDebugInfo
             {

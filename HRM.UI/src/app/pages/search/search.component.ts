@@ -1,6 +1,8 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { timeout, catchError } from 'rxjs/operators';
+import { of, throwError } from 'rxjs';
 import { PatientService } from '../../services/patient.service';
 import { Patient, SearchDebugInfo } from '../../models/patient.model';
 import { NotificationService } from '../../services/notification.service';
@@ -15,7 +17,7 @@ import { NotificationService } from '../../services/notification.service';
       <div class="d-flex align-items-center justify-content-between mb-4">
         <div>
           <h3 class="fw-bold text-dark m-0">🔍 Tra cứu &amp; Benchmark Lẻ</h3>
-          <p class="text-muted m-0 fs-7">Tìm kiếm dữ liệu bệnh nhân và đo đạc thời gian thực thi theo thuật toán mã hóa (V1 Baseline / V2 HMAC-BI-GRAM)</p>
+          <p class="text-muted m-0 fs-7">Tìm kiếm dữ liệu bệnh nhân và đo đạc thời gian thực thi theo thuật toán mã hóa (V1 Baseline / V2 HMAC-TRI-GRAM)</p>
         </div>
       </div>
 
@@ -54,19 +56,32 @@ import { NotificationService } from '../../services/notification.service';
             <div class="col-md-2">
               <label class="form-label fw-semibold text-secondary fs-7">Pipeline thuật toán</label>
               <select class="form-select" [(ngModel)]="pipeline" name="pipeline">
-                <option value="V2">V2 (HMAC + BI-GRAM)</option>
+                <option value="V2">V2 (HMAC + TRI-GRAM)</option>
                 <option value="V1">V1 (Baseline SHA256)</option>
               </select>
             </div>
 
             <!-- Nút Tìm kiếm -->
             <div class="col-md-2">
-              <button type="submit" class="btn btn-primary w-100 fw-bold py-2 shadow-sm rounded-3">
-                <span>🔎</span> Tìm kiếm
+              <button type="submit" class="btn btn-primary w-100 fw-bold py-2 shadow-sm rounded-3" [disabled]="isLoading">
+                <span *ngIf="isLoading" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                <span *ngIf="!isLoading">🔎</span> {{ isLoading ? 'Đang tra cứu...' : 'Tìm kiếm' }}
               </button>
             </div>
           </form>
         </div>
+      </div>
+
+      <!-- Thông báo lỗi Timeout -->
+      <div *ngIf="v1TimeoutError" class="alert alert-danger border border-3 border-danger shadow-sm rounded-4 p-4 mb-4 text-center" style="background-color: #fff2f2;">
+        <div class="display-6 mb-2 text-danger">⚠️ </div>
+        <h4 class="fw-bold text-danger mb-2">CẢNH BÁO QUÁ TẢI HỆ THỐNG (TIMEOUT)</h4>
+        <p class="fs-5 fw-bold text-danger mb-1">
+          {{ v1TimeoutError }}
+        </p>
+        <small class="text-danger fw-semibold d-block">
+          (Quá thời gian chờ 15 giây: Hệ thống V1 Baseline SHA256 phải quét và giải mã toàn bộ bản ghi)
+        </small>
       </div>
 
       <!-- Khối thống kê chỉ số SearchDebugInfo từ Backend API -->
@@ -160,7 +175,8 @@ import { NotificationService } from '../../services/notification.service';
                 </tr>
               </thead>
               <tbody>
-                <tr *ngFor="let item of items">
+                <!-- Render danh sách theo trang pagedItems để tránh giật lag khi có 900 bản ghi -->
+                <tr *ngFor="let item of pagedItems">
                   <td class="ps-3 fw-bold text-primary">#{{ item.patientID }}</td>
                   <td class="fw-semibold text-dark">{{ item.name }}</td>
                   <td><code class="bg-light px-2 py-1 rounded text-dark fs-7">{{ item.cccd }}</code></td>
@@ -175,7 +191,17 @@ import { NotificationService } from '../../services/notification.service';
                   <td><span class="badge bg-warning-subtle text-dark fw-bold">{{ item.blood_Type ?? 'N/A' }}</span></td>
                   <td class="pe-3 text-muted">{{ item.email ?? 'N/A' }}</td>
                 </tr>
-                <tr *ngIf="items.length === 0">
+
+                <!-- Trạng thái đang tải dữ liệu -->
+                <tr *ngIf="isLoading">
+                  <td colspan="9" class="text-center py-5 text-muted">
+                    <div class="spinner-border text-primary mb-2" role="status"></div>
+                    <div class="fw-semibold">Đang truy vấn và giải mã dữ liệu...</div>
+                  </td>
+                </tr>
+
+                <!-- Trạng thái không có bản ghi -->
+                <tr *ngIf="!isLoading && items.length === 0">
                   <td colspan="9" class="text-center py-5 text-muted">
                     <div class="fs-1 mb-2">📭</div>
                     <div>Không tìm thấy bản ghi bệnh nhân nào phù hợp.</div>
@@ -183,6 +209,58 @@ import { NotificationService } from '../../services/notification.service';
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <!-- Bộ điều khiển phân trang -->
+          <div *ngIf="items.length > 0" class="d-flex flex-wrap align-items-center justify-content-between pt-3 border-top mt-3">
+            <!-- Thống kê vị trí bản ghi và số dòng trên trang -->
+            <div class="d-flex align-items-center mb-2 mb-md-0">
+              <small class="text-muted me-3">
+                Hiển thị từ <strong>{{ startRecord }}</strong> đến <strong>{{ endRecord }}</strong> trong tổng số <strong>{{ items.length }}</strong> bản ghi
+              </small>
+              <div class="d-flex align-items-center">
+                <small class="text-muted me-2">Số dòng/trang:</small>
+                <select class="form-select form-select-sm" style="width: auto;" [(ngModel)]="pageSize" (ngModelChange)="onPageSizeChange()">
+                  <option [ngValue]="10">10</option>
+                  <option [ngValue]="25">25</option>
+                  <option [ngValue]="50">50</option>
+                  <option [ngValue]="100">100</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Các nút chuyển trang -->
+            <div class="btn-group">
+              <button (click)="goToPage(1)" [disabled]="page <= 1" class="btn btn-sm btn-outline-secondary" title="Trang đầu">
+                « Đầu
+              </button>
+              <button (click)="goToPage(page - 1)" [disabled]="page <= 1" class="btn btn-sm btn-outline-secondary">
+                ‹ Trước
+              </button>
+
+              <ng-container *ngFor="let p of getVisiblePages()">
+                <button
+                  *ngIf="p !== -1"
+                  (click)="goToPage(p)"
+                  [class.btn-primary]="p === page"
+                  [class.text-white]="p === page"
+                  [class.btn-outline-secondary]="p !== page"
+                  class="btn btn-sm"
+                >
+                  {{ p }}
+                </button>
+                <button *ngIf="p === -1" class="btn btn-sm btn-outline-secondary disabled" disabled>
+                  ...
+                </button>
+              </ng-container>
+
+              <button (click)="goToPage(page + 1)" [disabled]="page >= totalPages" class="btn btn-sm btn-outline-secondary">
+                Sau ›
+              </button>
+              <button (click)="goToPage(totalPages)" [disabled]="page >= totalPages" class="btn btn-sm btn-outline-secondary" title="Trang cuối">
+                Cuối »
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -194,14 +272,23 @@ export class SearchComponent implements OnInit {
   field: string = 'Name';
   pipeline: string = 'V2';
 
+  // Danh sách toàn bộ kết quả trả về từ API (ví dụ: 900 bệnh nhân từ V2)
   items: Patient[] = [];
   totalResults: number = 0;
   searchDebug: SearchDebugInfo | null = null;
 
+  // Trạng thái tải dữ liệu và thông báo lỗi V1
+  isLoading: boolean = false;
+  v1TimeoutError: string | null = null;
+
+  // Biến quản lý phân trang (Pagination)
+  page: number = 1;
+  pageSize: number = 10;
+
   constructor(
     private patientService: PatientService,
     private notificationService: NotificationService
-  ) {}
+  ) { }
 
   ngOnInit(): void {
     // Tải danh sách 10 bệnh nhân ban đầu từ CSDL
@@ -214,8 +301,73 @@ export class SearchComponent implements OnInit {
       next: (res) => {
         this.items = res.items ?? [];
         this.totalResults = res.total ?? 0;
+        this.page = 1;
       }
     });
+  }
+
+  // Tính tổng số trang dựa trên độ dài danh sách items và pageSize
+  get totalPages(): number {
+    return Math.ceil(this.items.length / this.pageSize) || 1;
+  }
+
+  // Lấy dữ liệu cho trang hiện tại (chỉ render đúng số dòng của trang, chống giật lag khi có 900 bản ghi)
+  get pagedItems(): Patient[] {
+    const start = (this.page - 1) * this.pageSize;
+    return this.items.slice(start, start + this.pageSize);
+  }
+
+  // Chỉ số bản ghi bắt đầu hiển thị
+  get startRecord(): number {
+    return this.items.length === 0 ? 0 : (this.page - 1) * this.pageSize + 1;
+  }
+
+  // Chỉ số bản ghi kết thúc hiển thị
+  get endRecord(): number {
+    return Math.min(this.page * this.pageSize, this.items.length);
+  }
+
+  // Chuyển tới trang cụ thể
+  goToPage(p: number): void {
+    if (p >= 1 && p <= this.totalPages) {
+      this.page = p;
+    }
+  }
+
+  // Thay đổi số lượng dòng hiển thị trên mỗi trang
+  onPageSizeChange(): void {
+    this.page = 1;
+  }
+
+  // Tạo danh sách số trang hiển thị thông minh (có dấu ...)
+  getVisiblePages(): number[] {
+    const total = this.totalPages;
+    const current = this.page;
+    const pages: number[] = [];
+
+    if (total <= 7) {
+      for (let i = 1; i <= total; i++) {
+        pages.push(i);
+      }
+    } else {
+      pages.push(1);
+      if (current > 3) {
+        pages.push(-1); // Đại diện cho dấu '...'
+      }
+
+      const start = Math.max(2, current - 1);
+      const end = Math.min(total - 1, current + 1);
+      for (let i = start; i <= end; i++) {
+        pages.push(i);
+      }
+
+      if (current < total - 2) {
+        pages.push(-1); // Đại diện cho dấu '...'
+      }
+      pages.push(total);
+    }
+
+    return pages;
   }
 
   // Tính số lượng đụng độ (Collision Count = candidateCount - resultCount)
@@ -237,12 +389,44 @@ export class SearchComponent implements OnInit {
       return;
     }
 
-    this.patientService.searchBenchmark(trimmed, this.field, this.pipeline).subscribe({
-      next: (res) => {
-        this.items = res.items ?? [];
-        this.totalResults = res.total ?? 0;
-        this.searchDebug = res.searchDebug ?? null;
-      }
-    });
+    // Đặt lại trạng thái trước khi tìm kiếm mới
+    this.isLoading = true;
+    this.v1TimeoutError = null;
+    this.page = 1;
+
+    this.patientService
+      .searchBenchmark(trimmed, this.field, this.pipeline)
+      .pipe(
+        // Giới hạn thời gian phản hồi là 15 giây (15000ms) theo yêu cầu Nhiệm vụ 1
+        timeout({
+          each: 15000,
+          with: () => throwError(() => new Error('TIMEOUT_15S'))
+        }),
+        catchError((err) => {
+          this.isLoading = false;
+          // Bắt lỗi khi V1 bị quá tải hoặc phản hồi quá 15 giây
+          if (this.pipeline === 'V1' || err?.message === 'TIMEOUT_15S') {
+            this.v1TimeoutError = 'Hệ thống V1 bị quá tải bộ nhớ do phải quét toàn bộ dữ liệu mã hóa!';
+            this.notificationService.showError(this.v1TimeoutError);
+            this.items = [];
+            this.totalResults = 0;
+            this.searchDebug = null;
+          } else {
+            this.notificationService.showError(err?.error?.message || 'Có lỗi xảy ra khi tra cứu dữ liệu.');
+          }
+          return of(null);
+        })
+      )
+      .subscribe({
+        next: (res) => {
+          this.isLoading = false;
+          if (res) {
+            this.items = res.items ?? [];
+            this.totalResults = res.total ?? 0;
+            this.searchDebug = res.searchDebug ?? null;
+            this.page = 1;
+          }
+        }
+      });
   }
 }
