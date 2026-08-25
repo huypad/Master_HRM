@@ -199,7 +199,7 @@ namespace HRM.Services
             var debug = new SearchDebugInfo
             {
                 SearchKeyword = keyword,
-                SearchType = "Fuzzy_V2_BitGram"
+                SearchType = "Fuzzy_V2_TriGram"
             };
 
             if (string.IsNullOrWhiteSpace(keyword))
