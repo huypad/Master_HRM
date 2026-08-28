@@ -38,8 +38,8 @@ export type ChartOptions = {
       <!-- Tiêu đề trang so sánh -->
       <div class="d-flex align-items-center justify-content-between mb-4">
         <div>
-          <h3 class="fw-bold text-dark m-0">⚡ So sánh Thuật toán V1 vs BI-GRAM V2</h3>
-          <p class="text-muted m-0 fs-7">Chạy song song V1 (SHA256 Baseline) và V2 (HMAC + BI-GRAM Bucket) để đo đạc và so sánh tốc độ tăng tốc (Speedup Ratio)</p>
+          <h3 class="fw-bold text-dark m-0">⚡ So sánh Thuật toán V1 vsTRI-GRAM V2</h3>
+          <p class="text-muted m-0 fs-7">Chạy song song V1 (SHA256 Baseline) và V2 (HMAC + TRI-GRAM Bucket) để đo đạc và so sánh tốc độ tăng tốc (Speedup Ratio)</p>
         </div>
       </div>
 
@@ -103,7 +103,7 @@ export type ChartOptions = {
                     {{ compareResult.comparison.winner }}
                   </h1>
                   <p class="m-0 text-white-50 fs-7">
-                    Thuật toán {{ compareResult.comparison.winner === 'V2' ? 'V2 (HMAC + BI-GRAM Index)' : 'V1 (SHA256 Baseline)' }} đạt hiệu năng vượt trội hơn.
+                    Thuật toán {{ compareResult.comparison.winner === 'V2' ? 'V2 (HMAC + TRI-GRAM Index)' : 'V1 (SHA256 Baseline)' }} đạt hiệu năng vượt trội hơn.
                   </p>
                 </div>
               </div>
@@ -160,7 +160,7 @@ export type ChartOptions = {
         <!-- Bảng chi tiết thông số so sánh -->
         <div class="card border-0 shadow-sm rounded-4">
           <div class="card-header bg-white border-0 pt-4 px-4 pb-0">
-            <h5 class="fw-bold text-dark m-0">📋 Bảng Chi tiết Thông số Hiệu năng V1 vs BI-GRAM V2</h5>
+            <h5 class="fw-bold text-dark m-0">📋 Bảng Chi tiết Thông số Hiệu năng V1 vs TRI-GRAM V2</h5>
           </div>
           <div class="card-body p-4">
             <div class="table-responsive">
@@ -169,14 +169,14 @@ export type ChartOptions = {
                   <tr>
                     <th scope="col" class="py-3 text-start ps-3" style="width: 34%;">Chỉ số Đánh giá (Metrics)</th>
                     <th scope="col" class="py-3 text-primary" style="width: 33%;">V1 Baseline (SHA256)</th>
-                    <th scope="col" class="py-3 text-success" style="width: 33%;">V2 Cải tiến (HMAC + BI-GRAM)</th>
+                    <th scope="col" class="py-3 text-success" style="width: 33%;">V2 Cải tiến (HMAC + TRI-GRAM)</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
                     <td class="fw-semibold ps-3">Mô tả Loại Tìm kiếm (Search Type)</td>
                     <td class="text-center"><code>{{ compareResult.v1.searchDebug?.searchType ?? 'Fuzzy_V1_Baseline' }}</code></td>
-                    <td class="text-center"><code>{{ compareResult.v2.searchDebug?.searchType ?? 'Fuzzy_V2_BI-GRAM' }}</code></td>
+                    <td class="text-center"><code>{{ compareResult.v2.searchDebug?.searchType ?? 'Fuzzy_V2_TRI-GRAM' }}</code></td>
                   </tr>
                   <tr>
                     <td class="fw-semibold ps-3">Tổng Thời gian Thực thi (Total Ms)</td>
@@ -229,7 +229,7 @@ export class BenchmarkComponent implements OnInit {
   constructor(
     private patientService: PatientService,
     private notificationService: NotificationService
-  ) {}
+  ) { }
 
   ngOnInit(): void {
     // Tự động kích hoạt so sánh ban đầu khi vào trang
@@ -276,7 +276,7 @@ export class BenchmarkComponent implements OnInit {
           data: [v1?.totalMs ?? 0, v1?.step1Ms ?? 0, v1?.step2Ms ?? 0]
         },
         {
-          name: 'V2 Cải tiến (HMAC + BI-GRAM)',
+          name: 'V2 Cải tiến (HMAC + TRI-GRAM)',
           data: [v2?.totalMs ?? 0, v2?.step1Ms ?? 0, v2?.step2Ms ?? 0]
         }
       ],
