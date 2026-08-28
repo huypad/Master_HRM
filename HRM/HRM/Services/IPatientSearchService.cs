@@ -6,7 +6,7 @@ namespace HRM.Services
   
     /// Contract dịch vụ tra cứu 2 bước (2-Step Search) cho HealthcareDB.
     /// Cung cấp các phương thức tra cứu Pipeline V2 (HMAC + BitGram Bucket)
-    /// và Pipeline V1 Baseline (SHA256 fixed-salt) để phục vụ đo đạc Benchmark.
+    /// và Pipeline V1 Baseline full scan để phục vụ đo đạc Benchmark.
 
     public interface IPatientSearchService
     {
@@ -18,14 +18,14 @@ namespace HRM.Services
         /// <returns>PagedResult chứa danh sách bệnh nhân và chỉ số đo đạc SearchDebugInfo.</returns>
         Task<PagedResult<PatientDto>> SearchExactAsync(string keyword, string field);
 
-        /// Tra cứu gần đúng (Fuzzy Search) theo Họ tên bằng Pipeline V2 (BitGram 16-bit Bucket).
+        /// Tra cứu gần đúng theo Họ tên bằng Pipeline V2 (MinHash LSH).
         
         /// <param name="keyword">Từ khóa Họ tên cần tìm.</param>
         /// <returns>PagedResult chứa danh sách bệnh nhân và chỉ số đo đạc SearchDebugInfo.</returns>
         Task<PagedResult<PatientDto>> SearchFuzzyAsync(string keyword);
 
         
-        /// Tra cứu chính xác Baseline bằng Pipeline V1 (SHA256 fixed-salt) trên HealthcareDB để so sánh sòng phẳng.
+        /// Tra cứu chính xác Baseline bằng Pipeline V1 full scan trên HealthcareDB để so sánh.
         
         /// <param name="keyword">Từ khóa tra cứu.</param>
         /// <param name="field">Tên cột cần tra.</param>
@@ -33,7 +33,7 @@ namespace HRM.Services
         Task<PagedResult<PatientDto>> SearchExactBaselineAsync(string keyword, string field);
 
         
-        /// Tra cứu gần đúng Baseline bằng Pipeline V1 (SHA256 fixed-salt Trigram) trên HealthcareDB để so sánh sòng phẳng.
+        /// Tra cứu gần đúng Baseline bằng Pipeline V1 full scan trên HealthcareDB để so sánh.
        
         /// <param name="keyword">Từ khóa Họ tên cần tìm.</param>
         /// <returns>PagedResult chứa danh sách bệnh nhân và chỉ số đo đạc SearchDebugInfo.</returns>

@@ -53,14 +53,8 @@ namespace HRM.Services
             }
 
             string cleanKw = keyword.Trim();
-            bool isIdSearch = (field?.ToUpperInvariant()) is "ID" or "PATIENTID";
-
-            // 1. Generate HMAC & SHA256 Exact Indexes (Bao phủ cả HMAC tiêu chuẩn và SHA256 không khóa của Bạn 1)
-            var swIndexGen = Stopwatch.StartNew();
+            // 1. Generate HMAC exact index.
             string hmacIndex = _securityService.GenerateExactIndex(cleanKw);
-            string sha256Index1 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(cleanKw)));
-            string sha256Index2 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(cleanKw + "  ")));
-            swIndexGen.Stop();
 
             // Xác định cột HMAC cần query
             string hmacColumn = (field?.ToUpperInvariant()) switch
@@ -80,46 +74,15 @@ namespace HRM.Services
                 string sql = $@"
                     SELECT PatientID, EncryptName, EncryptCCCD, EncryptPhone, EncryptBankAccount
                     FROM dbo.Patient_Secure
-                    WHERE {hmacColumn} IN (@HmacValue, @Sha1, @Sha2);";
+                    WHERE {hmacColumn} = @HmacValue;";
 
                 using var cmd = new SqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@HmacValue", hmacIndex);
-                cmd.Parameters.AddWithValue("@Sha1", sha256Index1);
-                cmd.Parameters.AddWithValue("@Sha2", sha256Index2);
 
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
                     candidates.Add(ReadEncryptedRow(reader));
-                }
-            }
-
-            // Fallback neu hmacIndex tren DB cua Ban 1 dung hash khac -> doc theo value match
-            if (candidates.Count == 0)
-            {
-                using (var conn = new SqlConnection(_connectionString))
-                {
-                    await conn.OpenAsync();
-                    string sql = @"
-                        SELECT PatientID, EncryptName, EncryptCCCD, EncryptPhone, EncryptBankAccount
-                        FROM dbo.Patient_Secure;";
-
-                    using var cmd = new SqlCommand(sql, conn);
-                    using var reader = await cmd.ExecuteReaderAsync();
-                    while (await reader.ReadAsync())
-                    {
-                        var row = ReadEncryptedRow(reader);
-                        string val = (field?.ToUpperInvariant()) switch
-                        {
-                            "PHONE" => _securityService.DecryptData(row.I_Phone),
-                            "BANK" => _securityService.DecryptData(row.I_BankAccount),
-                            _ => _securityService.DecryptData(row.I_CCCD)
-                        };
-                        if (val.Trim().Equals(cleanKw, StringComparison.OrdinalIgnoreCase))
-                        {
-                            candidates.Add(row);
-                        }
-                    }
                 }
             }
 
@@ -174,14 +137,14 @@ namespace HRM.Services
                 }
             }
             swStep2.Stop();
-            swTotal.Stop();
 
             debug.Step2Ms = swStep2.ElapsedMilliseconds;
-            debug.TotalMs = swTotal.ElapsedMilliseconds;
             debug.ResultCount = results.Count;
             debug.CollisionCount = debug.CandidateCount - debug.ResultCount;
 
             await EnrichPatientDetailsAsync(results);
+            swTotal.Stop();
+            debug.TotalMs = swTotal.ElapsedMilliseconds;
 
             return new PagedResult<PatientDto>
             {
@@ -191,15 +154,17 @@ namespace HRM.Services
             };
         }
 
-        /// Tra cứu gần đúng V2 (BitGram / MinHash LSH Bucket) theo Họ Tên.
+        /// Tra cứu gần đúng V2 (Trigram Containment Index) theo Họ Tên.
 
         public async Task<PagedResult<PatientDto>> SearchFuzzyAsync(string keyword)
         {
+            const int FUZZY_MATCH_THRESHOLD = 1;
+
             var swTotal = Stopwatch.StartNew();
             var debug = new SearchDebugInfo
             {
                 SearchKeyword = keyword,
-                SearchType = "Fuzzy_V2_TriGram"
+                SearchType = $"Fuzzy_V2_MinHash_LSH_{HRM.Security.RealSecurityService.FUZZY_NGRAM_SIZE}Gram_{HRM.Security.RealSecurityService.FUZZY_HASH_SEEDS.Length}Seeds_Threshold{FUZZY_MATCH_THRESHOLD}"
             };
 
             if (string.IsNullOrWhiteSpace(keyword))
@@ -212,79 +177,77 @@ namespace HRM.Services
             string cleanKw = keyword.Trim();
             string normalizedKw = SecurityIndexHelper.NormalizeForSearch(cleanKw).Replace("\0", "").Trim();
 
-            // 1. TÍNH BUCKET THEO THUẬT TOÁN MỚI: GenerateFuzzyIndex → 5 MinHash values
-            // Cùng quy ước với phía INSERT (PatientService.CreateAsync / UpdateAsync)
             string fuzzyStr = _securityService.GenerateFuzzyIndex(cleanKw);
             int[] searchBuckets = ParseMinHashBuckets(fuzzyStr);
 
-            // 2. Step 1: SQL Index Seek Query (GramBucket IN (@Buckets))
-            var candidateIds = new List<int>();
+            var candidateRows = new List<(int PatientID, string EncryptName)>();
             var swStep1 = Stopwatch.StartNew();
 
             if (searchBuckets.Length > 0)
             {
+                var uniqueBuckets = searchBuckets.Distinct().ToArray();
+
                 using (var conn = new SqlConnection(_connectionString))
                 {
                     await conn.OpenAsync();
 
                     var sqlBuilder = new StringBuilder();
                     sqlBuilder.Append(@"
-                        SELECT DISTINCT PatientID
-                        FROM dbo.BitGramIndex_Patient
-                        WHERE GramBucket IN (");
+                        SELECT p.PatientID, p.EncryptName
+                        FROM dbo.Patient_Secure p WITH(NOLOCK)
+                        INNER JOIN (
+                            SELECT PatientID, COUNT(DISTINCT GramBucket) AS MatchCount
+                            FROM dbo.BitGramIndex_Patient WITH(NOLOCK)
+                            WHERE GramBucket IN (");
 
-                    for (int i = 0; i < searchBuckets.Length; i++)
+                    for (int i = 0; i < uniqueBuckets.Length; i++)
                     {
                         if (i > 0) sqlBuilder.Append(", ");
                         sqlBuilder.Append($"@b{i}");
                     }
-                    sqlBuilder.Append(");");
+                    sqlBuilder.Append(@")
+                            GROUP BY PatientID
+                            HAVING COUNT(DISTINCT GramBucket) >= @Threshold
+                        ) g ON g.PatientID = p.PatientID;");
 
                     using var cmd = new SqlCommand(sqlBuilder.ToString(), conn);
-                    for (int i = 0; i < searchBuckets.Length; i++)
+                    cmd.CommandTimeout = 120;
+                    for (int i = 0; i < uniqueBuckets.Length; i++)
                     {
-                        cmd.Parameters.AddWithValue($"@b{i}", searchBuckets[i]);
+                        cmd.Parameters.AddWithValue($"@b{i}", uniqueBuckets[i]);
                     }
+                    int effectiveThreshold = Math.Min(FUZZY_MATCH_THRESHOLD, uniqueBuckets.Length);
+                    cmd.Parameters.AddWithValue("@Threshold", effectiveThreshold);
 
                     using var reader = await cmd.ExecuteReaderAsync();
                     while (await reader.ReadAsync())
                     {
-                        candidateIds.Add(reader.GetInt32(0));
+                        int pid = reader.GetInt32(0);
+                        byte[] nameBytes = reader.IsDBNull(1) ? Array.Empty<byte>() : (byte[])reader.GetValue(1);
+                        string encName = nameBytes.Length > 0 ? Convert.ToBase64String(nameBytes) : string.Empty;
+                        candidateRows.Add((pid, encName));
                     }
                 }
             }
 
             swStep1.Stop();
             debug.Step1Ms = swStep1.ElapsedMilliseconds;
-            debug.CandidateCount = candidateIds.Count;
+            debug.CandidateCount = candidateRows.Count;
 
-            // 3. Step 2: Fetch Candidates & RAM Filter
-            var results = new List<PatientDto>();
+            var matchedIds = new List<int>();
             var swStep2 = Stopwatch.StartNew();
 
-            if (candidateIds.Count > 0)
+            foreach (var (pid, encName) in candidateRows)
             {
-                var candidatesData = await FetchEncryptedRowsByIDsAsync(candidateIds);
+                string decName = _securityService.DecryptData(encName).Replace("\0", "").Trim();
+                if (string.IsNullOrEmpty(decName)) continue;
 
-                foreach (var row in candidatesData)
+                string normalizedDecryptedName = SecurityIndexHelper.NormalizeForSearch(decName).Replace("\0", "").Trim();
+
+                if (normalizedDecryptedName.Contains(normalizedKw, StringComparison.OrdinalIgnoreCase) ||
+                    normalizedDecryptedName.Replace(" ", "").Contains(normalizedKw.Replace(" ", ""), StringComparison.OrdinalIgnoreCase))
                 {
-                    string decName = _securityService.DecryptData(row.I_Name).Replace("\0", "").Trim();
-                    if (string.IsNullOrEmpty(decName)) continue;
-
-                    string normalizedDecryptedName = SecurityIndexHelper.NormalizeForSearch(decName).Replace("\0", "").Trim();
-
-                    if (normalizedDecryptedName.Contains(normalizedKw, StringComparison.OrdinalIgnoreCase) ||
-                        normalizedDecryptedName.Replace(" ", "").Contains(normalizedKw.Replace(" ", ""), StringComparison.OrdinalIgnoreCase))
-                    {
-                        results.Add(new PatientDto
-                        {
-                            PatientID = row.PatientID,
-                            Name = decName,
-                            CCCD = _securityService.DecryptData(row.I_CCCD).Replace("\0", "").Trim(),
-                            Phone = _securityService.DecryptData(row.I_Phone).Replace("\0", "").Trim(),
-                            BankAccount = _securityService.DecryptData(row.I_BankAccount).Replace("\0", "").Trim()
-                        });
-                    }
+                    matchedIds.Add(pid);
                 }
             }
 
@@ -293,8 +256,25 @@ namespace HRM.Services
 
             debug.Step2Ms = swStep2.ElapsedMilliseconds;
             debug.TotalMs = swTotal.ElapsedMilliseconds;
-            debug.ResultCount = results.Count;
+            debug.ResultCount = matchedIds.Count;
             debug.CollisionCount = debug.CandidateCount - debug.ResultCount;
+
+            var results = new List<PatientDto>();
+            if (matchedIds.Count > 0)
+            {
+                var fullRows = await FetchEncryptedRowsByIDsAsync(matchedIds);
+                foreach (var row in fullRows)
+                {
+                    results.Add(new PatientDto
+                    {
+                        PatientID = row.PatientID,
+                        Name = _securityService.DecryptData(row.I_Name).Replace("\0", "").Trim(),
+                        CCCD = _securityService.DecryptData(row.I_CCCD).Replace("\0", "").Trim(),
+                        Phone = _securityService.DecryptData(row.I_Phone).Replace("\0", "").Trim(),
+                        BankAccount = _securityService.DecryptData(row.I_BankAccount).Replace("\0", "").Trim()
+                    });
+                }
+            }
 
             await EnrichPatientDetailsAsync(results);
 
@@ -352,42 +332,68 @@ namespace HRM.Services
 
             string cleanKw = keyword.Trim();
 
-            // Step 1: Full Table Scan từ SQL (Đọc toàn bộ Patient_Secure)
-            var candidates = new List<EncryptedPatientRow>();
+            // Xác định cột ciphertext cần kéo, tương ứng field đang tìm
+            string targetColumn = (field?.ToUpperInvariant()) switch
+            {
+                "PHONE" => "EncryptPhone",
+                "BANK" => "EncryptBankAccount",
+                _ => "EncryptCCCD"
+            };
+
+            // Step 1: Full Table Scan từ SQL — CHỈ kéo PatientID + đúng 1 cột đang tìm
+            // (giống pattern của SearchFuzzyBaselineAsync), KHÔNG kéo cả 4 cột như trước.
+            // Giảm I/O ~4 lần cho 300.000 dòng — đây là nguyên nhân chính gây timeout/treo.
+            var targetRows = new List<(int PatientID, string EncryptedTarget)>();
             var swStep1 = Stopwatch.StartNew();
 
             using (var conn = new SqlConnection(_connectionString))
             {
                 await conn.OpenAsync();
-                string sql = @"
-                    SELECT PatientID, EncryptName, EncryptCCCD, EncryptPhone, EncryptBankAccount
+                string sql = $@"
+                    SELECT PatientID, {targetColumn}
                     FROM dbo.Patient_Secure;";
 
                 using var cmd = new SqlCommand(sql, conn);
+                cmd.CommandTimeout = 300; // Đồng bộ với luồng Fuzzy Baseline, tránh timeout 30s mặc định
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
-                    candidates.Add(ReadEncryptedRow(reader));
+                    int pid = reader.GetInt32(0);
+                    byte[] targetBytes = reader.IsDBNull(1) ? Array.Empty<byte>() : (byte[])reader.GetValue(1);
+                    string encTarget = targetBytes.Length > 0 ? Convert.ToBase64String(targetBytes) : string.Empty;
+                    targetRows.Add((pid, encTarget));
                 }
             }
             swStep1.Stop();
             debug.Step1Ms = swStep1.ElapsedMilliseconds;
-            debug.CandidateCount = candidates.Count; // CandidateCount thực tế đọc được từ SQL
+            debug.CandidateCount = targetRows.Count; // CandidateCount thực tế đọc được từ SQL
 
-            // Step 2: Giải mã AES-256 từng dòng trên RAM và so sánh Equals
-            var results = new List<PatientDto>();
+            // Step 2: Giải mã AES-256 CHỈ field đang tìm (không phải cả 4 field) trên RAM và so sánh Equals
+            var matchedIds = new List<int>();
             var swStep2 = Stopwatch.StartNew();
 
-            foreach (var row in candidates)
+            foreach (var (pid, encTarget) in targetRows)
             {
-                string decryptedTarget = (field?.ToUpperInvariant()) switch
+                string decryptedTarget = _securityService.DecryptData(encTarget).Replace("\0", "").Trim();
+                if (decryptedTarget.Equals(cleanKw, StringComparison.OrdinalIgnoreCase))
                 {
-                    "PHONE" => _securityService.DecryptData(row.I_Phone),
-                    "BANK" => _securityService.DecryptData(row.I_BankAccount),
-                    _ => _securityService.DecryptData(row.I_CCCD)
-                };
+                    matchedIds.Add(pid);
+                }
+            }
+            swStep2.Stop();
+            swTotal.Stop();
 
-                if (decryptedTarget.Trim().Equals(cleanKw, StringComparison.OrdinalIgnoreCase))
+            debug.Step2Ms = swStep2.ElapsedMilliseconds;
+            debug.TotalMs = swTotal.ElapsedMilliseconds;
+            debug.ResultCount = matchedIds.Count;
+            debug.CollisionCount = debug.CandidateCount - debug.ResultCount;
+
+            // Fetch đầy đủ thông tin (cả 4 cột) chỉ cho số ít kết quả khớp — không phải cho 300k dòng
+            var results = new List<PatientDto>();
+            if (matchedIds.Count > 0)
+            {
+                var fullRows = await FetchEncryptedRowsByIDsAsync(matchedIds);
+                foreach (var row in fullRows)
                 {
                     results.Add(new PatientDto
                     {
@@ -399,13 +405,6 @@ namespace HRM.Services
                     });
                 }
             }
-            swStep2.Stop();
-            swTotal.Stop();
-
-            debug.Step2Ms = swStep2.ElapsedMilliseconds;
-            debug.TotalMs = swTotal.ElapsedMilliseconds;
-            debug.ResultCount = results.Count;
-            debug.CollisionCount = debug.CandidateCount - debug.ResultCount;
 
             await EnrichPatientDetailsAsync(results);
 
@@ -440,53 +439,73 @@ namespace HRM.Services
             string cleanKw = keyword.Trim();
             string normalizedKw = SecurityIndexHelper.NormalizeForSearch(cleanKw).Replace("\0", "").Trim();
 
-            // Step 1: Full Table Scan từ SQL (Đọc toàn bộ Patient_Secure)
-            var results = new List<PatientDto>();
-            int candidateCount = 0;
-
+            // Step 1: Full Table Scan từ SQL — chỉ kéo PatientID + EncryptName (tối thiểu cần thiết để lọc)
+            var nameRows = new List<(int PatientID, string EncryptName)>();
             var swStep1 = Stopwatch.StartNew();
+
             using (var conn = new SqlConnection(_connectionString))
             {
                 await conn.OpenAsync();
                 string sql = @"
-                    SELECT PatientID, EncryptName, EncryptCCCD, EncryptPhone, EncryptBankAccount
+                    SELECT PatientID, EncryptName
                     FROM dbo.Patient_Secure;";
 
                 using var cmd = new SqlCommand(sql, conn);
+                cmd.CommandTimeout = 300;
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
-                    candidateCount++;
-                    var row = ReadEncryptedRow(reader);
-                    string decName = _securityService.DecryptData(row.I_Name).Replace("\0", "").Trim();
-
-                    if (!string.IsNullOrEmpty(decName))
-                    {
-                        string normDec = SecurityIndexHelper.NormalizeForSearch(decName).Replace("\0", "").Trim();
-                        if (normDec.Contains(normalizedKw, StringComparison.OrdinalIgnoreCase) ||
-                            normDec.Replace(" ", "").Contains(normalizedKw.Replace(" ", ""), StringComparison.OrdinalIgnoreCase))
-                        {
-                            results.Add(new PatientDto
-                            {
-                                PatientID = row.PatientID,
-                                Name = decName,
-                                CCCD = _securityService.DecryptData(row.I_CCCD).Replace("\0", "").Trim(),
-                                Phone = _securityService.DecryptData(row.I_Phone).Replace("\0", "").Trim(),
-                                BankAccount = _securityService.DecryptData(row.I_BankAccount).Replace("\0", "").Trim()
-                            });
-                        }
-                    }
+                    int pid = reader.GetInt32(0);
+                    byte[] nameBytes = reader.IsDBNull(1) ? Array.Empty<byte>() : (byte[])reader.GetValue(1);
+                    string encName = nameBytes.Length > 0 ? Convert.ToBase64String(nameBytes) : string.Empty;
+                    nameRows.Add((pid, encName));
                 }
             }
             swStep1.Stop();
+            debug.Step1Ms = swStep1.ElapsedMilliseconds;
+            debug.CandidateCount = nameRows.Count; // Thực tế là 300.000 bản ghi
+
+            // Step 2: Giải mã từng tên trên RAM và lọc mờ — đây là bước tốn thời gian nhất
+            var matchedIds = new List<int>();
+            var swStep2 = Stopwatch.StartNew();
+
+            foreach (var (pid, encName) in nameRows)
+            {
+                string decName = _securityService.DecryptData(encName).Replace("\0", "").Trim();
+                if (string.IsNullOrEmpty(decName)) continue;
+
+                string normDec = SecurityIndexHelper.NormalizeForSearch(decName).Replace("\0", "").Trim();
+                if (normDec.Contains(normalizedKw, StringComparison.OrdinalIgnoreCase) ||
+                    normDec.Replace(" ", "").Contains(normalizedKw.Replace(" ", ""), StringComparison.OrdinalIgnoreCase))
+                {
+                    matchedIds.Add(pid);
+                }
+            }
+            swStep2.Stop();
             swTotal.Stop();
 
-            debug.Step1Ms = swStep1.ElapsedMilliseconds;
-            debug.Step2Ms = 0;
+            debug.Step2Ms = swStep2.ElapsedMilliseconds;
             debug.TotalMs = swTotal.ElapsedMilliseconds;
-            debug.CandidateCount = candidateCount; // Thuc te 300.000 bản ghi
-            debug.ResultCount = results.Count;
+            debug.ResultCount = matchedIds.Count;
             debug.CollisionCount = debug.CandidateCount - debug.ResultCount;
+
+            // Fetch đầy đủ thông tin chỉ cho số ít kết quả khớp
+            var results = new List<PatientDto>();
+            if (matchedIds.Count > 0)
+            {
+                var fullRows = await FetchEncryptedRowsByIDsAsync(matchedIds);
+                foreach (var row in fullRows)
+                {
+                    results.Add(new PatientDto
+                    {
+                        PatientID = row.PatientID,
+                        Name = _securityService.DecryptData(row.I_Name).Replace("\0", "").Trim(),
+                        CCCD = _securityService.DecryptData(row.I_CCCD).Replace("\0", "").Trim(),
+                        Phone = _securityService.DecryptData(row.I_Phone).Replace("\0", "").Trim(),
+                        BankAccount = _securityService.DecryptData(row.I_BankAccount).Replace("\0", "").Trim()
+                    });
+                }
+            }
 
             await EnrichPatientDetailsAsync(results);
 

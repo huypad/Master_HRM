@@ -15,7 +15,7 @@ namespace HRM.Services
 {
 
 
-    /// Tự động đồng bộ mã hóa AES-256 (varbinary), HMAC exact index và BitGram 16-bit / LSH bucket index.
+    /// Tự động đồng bộ AES-256, HMAC exact index và MinHash LSH bucket index.
 
     public class PatientService : IPatientService
     {
@@ -190,7 +190,7 @@ namespace HRM.Services
                 }
 
                 // 3. Sinh BitGram / LSH Bucket Index va Insert vao BitGramIndex_Patient
-                // Thuật toán mới: 5 MinHash buckets riêng lẻ (GramPosition 0-4) thay vì 1 bucket GetHashCode
+                // Lưu một bucket MinHash cho mỗi seed của cấu hình hiện hành.
                 string fuzzyBucketStr = _securityService.GenerateFuzzyIndex(nameStr);
                 if (!string.IsNullOrEmpty(fuzzyBucketStr))
                 {
@@ -317,7 +317,7 @@ namespace HRM.Services
                     await cmd.ExecuteNonQueryAsync();
                 }
 
-                // 3. Rebuild BitGram Index — 5 MinHash buckets theo thuật toán mới
+                // 3. Rebuild MinHash LSH index theo cấu hình hiện hành.
                 string fuzzyBucketStr = _securityService.GenerateFuzzyIndex(nameStr);
                 if (!string.IsNullOrEmpty(fuzzyBucketStr))
                 {
@@ -391,8 +391,7 @@ namespace HRM.Services
         }
 
         /// <summary>
-        /// Parse chuỗi "BKT_V2_h0_h1_h2_h3_h4" thành mảng 5 MinHash int values.
-        /// Dùng để lưu 5 bucket riêng lẻ vào BitGramIndex_Patient (GramPosition 0-4).
+        /// Parse chuỗi bucket MinHash để lưu từng bucket vào BitGramIndex_Patient.
         /// </summary>
         private static int[] ParseMinHashBuckets(string fuzzyBucketStr)
         {

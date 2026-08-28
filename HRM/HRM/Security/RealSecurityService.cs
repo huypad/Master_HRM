@@ -8,16 +8,32 @@ namespace HRM.Security
 {
    
     /// Triển khai dịch vụ bảo mật lai (Hybrid Security) cho HealthcareDB1.
-    /// - Mã hóa/Giải mã: AES-256 (IV 16 byte ở đầu ciphertext, PKCS7).
-    /// - Chỉ mục tra cứu chính xác: HMAC-SHA256 (Hex 64 ký tự).
-    /// - Chỉ mục tra cứu mờ: MinHash LSH Tri-gram (5 Hash Functions, seeds: 13,27,31,47,59).
+    /// - Chỉ mục tra cứu mờ: MinHash LSH với cấu hình n-gram và seed hiện hành.
 
     public class RealSecurityService : IHybridSecurityService
     {
-        // Khóa bí mật 256-bit (32 bytes) cho AES và HMAC
-        // .Take(32): đảm bảo đúng 32 bytes — AES-256 yêu cầu key length 16/24/32
-        private static readonly byte[] AES_KEY  = Encoding.UTF8.GetBytes("HRM_MASTER_KEY_32BYTES_2026_LEADER_SEC!").Take(32).ToArray();
-        private static readonly byte[] HMAC_KEY = Encoding.UTF8.GetBytes("HRM_HMAC_INDEX_KEY_32BYTES_2026_LEADER!").Take(32).ToArray();
+
+        private readonly byte[] AES_KEY;
+        private readonly byte[] HMAC_KEY;
+
+        public RealSecurityService(Microsoft.Extensions.Configuration.IConfiguration configuration)
+        {
+            string aesKeyStr = configuration["Security:AesKey"]
+                ?? throw new InvalidOperationException("Thiếu cấu hình 'Security:AesKey' (User Secrets/Env Var).");
+            string hmacKeyStr = configuration["Security:HmacKey"]
+                ?? throw new InvalidOperationException("Thiếu cấu hình 'Security:HmacKey' (User Secrets/Env Var).");
+
+            AES_KEY = ReadExactly32ByteKey(aesKeyStr, "Security:AesKey");
+            HMAC_KEY = ReadExactly32ByteKey(hmacKeyStr, "Security:HmacKey");
+
+            _aesLocal = new System.Threading.ThreadLocal<Aes>(() => {
+                var aes = Aes.Create();
+                aes.Key = AES_KEY;
+                aes.Mode = CipherMode.CBC;
+                aes.Padding = PaddingMode.PKCS7;
+                return aes;
+            });
+        }
 
         #region IHybridSecurityService Implementation
 
@@ -50,64 +66,38 @@ namespace HRM.Security
 
         /// Giải mã dữ liệu AES-256 từ chuỗi Base64 chứa [IV (16B) + CipherText (NB)].
 
-        private static readonly System.Threading.ThreadLocal<Aes> _aesLocal = new System.Threading.ThreadLocal<Aes>(() => {
-            var aes = Aes.Create();
-            aes.Key = AES_KEY;
-            aes.Mode = CipherMode.CBC;
-            aes.Padding = PaddingMode.PKCS7;
-            return aes;
-        });
+        private readonly System.Threading.ThreadLocal<Aes> _aesLocal;
 
         public string DecryptData(string cipherText)
         {
             if (string.IsNullOrEmpty(cipherText)) return string.Empty;
 
-            if (!cipherText.StartsWith("BKT_") && !IsBase64String(cipherText))
-            {
-                return cipherText;
-            }
-
-            byte[] fullCipher = null;
+            byte[] fullCipher;
             try
             {
                 fullCipher = Convert.FromBase64String(cipherText);
             }
-            catch
+            catch (FormatException ex)
             {
-                return cipherText;
+                throw new InvalidOperationException(
+                    "Ciphertext Bệnh nhân không đúng định dạng Base64.", ex);
             }
 
-            // 1. Kiểm tra xem đây có phải là Dữ liệu mẫu (Seed Data) dạng chuỗi thuần hay không
-            // Tránh việc ném Exception trong AES decryption (gây nghẽn CPU khi chạy debug)
-            try
+            if (fullCipher.Length <= 16 || (fullCipher.Length - 16) % 16 != 0)
             {
-                // Thử decode UTF-8
-                string rawStr = Encoding.UTF8.GetString(fullCipher).Replace("\0", "").Trim();
-                if (!string.IsNullOrEmpty(rawStr) && !rawStr.Contains('\uFFFD') && rawStr.All(c => !char.IsControl(c) || c == ' ' || c == '\t'))
-                {
-                    return rawStr;
-                }
-                
-                // Thử decode UTF-16 (Dữ liệu N'String' trong SQL Server)
-                string utf16Str = Encoding.Unicode.GetString(fullCipher).Replace("\0", "").Trim();
-                if (!string.IsNullOrEmpty(utf16Str) && !utf16Str.Contains('\uFFFD') && utf16Str.All(c => !char.IsControl(c) || c == ' ' || c == '\t'))
-                {
-                    return utf16Str;
-                }
+                throw new InvalidOperationException(
+                    "Ciphertext Bệnh nhân không đúng định dạng AES-CBC.");
             }
-            catch { }
 
-            // 2. Nếu không phải là Seed Data hợp lệ, thì đây đích thị là dữ liệu đã được mã hóa AES (Cipher text)
             try
             {
-                if (fullCipher.Length < 16) return cipherText;
-
                 byte[] iv = new byte[16];
                 byte[] cipher = new byte[fullCipher.Length - 16];
                 Buffer.BlockCopy(fullCipher, 0, iv, 0, 16);
                 Buffer.BlockCopy(fullCipher, 16, cipher, 0, cipher.Length);
 
-                var aes = _aesLocal.Value;
+                var aes = _aesLocal.Value
+                    ?? throw new InvalidOperationException("Không thể khởi tạo AES cho HealthcareDB1.");
                 aes.IV = iv;
 
                 using var decryptor = aes.CreateDecryptor();
@@ -115,9 +105,10 @@ namespace HRM.Security
 
                 return Encoding.UTF8.GetString(decryptedBytes).Replace("\0", "").Trim();
             }
-            catch
+            catch (CryptographicException ex)
             {
-                return cipherText; // Fallback
+                throw new InvalidOperationException(
+                    "Giải mã dữ liệu Bệnh nhân thất bại. Kiểm tra Security:AesKey và dữ liệu trong Patient_Secure.", ex);
             }
         }
 
@@ -135,52 +126,51 @@ namespace HRM.Security
             return Convert.ToHexString(hashBytes); // 64 ky tu Hex in hoa
         }
 
-    
-        /// LSH + TRI-GRAM: Tạo chỉ mục tìm kiếm mờ (Fuzzy Index) theo thuật toán Leader.
-        /// Tri-gram (n=3) + 5 MinHash functions (seeds: 13,27,31,47,59).
-        /// Output: "BKT_V2_h0_h1_h2_h3_h4" — 5 MinHash values dùng làm bucket keys.
+        // Cấu hình benchmark đã chốt: Tri-gram + 3 MinHash seeds.
+        public const int FUZZY_NGRAM_SIZE = 3;
+
+        public static readonly int[] FUZZY_HASH_SEEDS = { 13, 27, 31 };
+
+        private static int GetSeededHash(string gram, int seed)
+        {
+            string input = $"{seed}:{gram}";
+            byte[] bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(input));
+            return BitConverter.ToInt32(bytes, 0);
+        }
 
         public string GenerateFuzzyIndex(string rawText)
         {
             if (string.IsNullOrEmpty(rawText)) return string.Empty;
 
-            // Bước 1: Chuẩn hóa — viết thường và xóa khoảng trắng
+            // Chuẩn hóa — viết thường và xóa khoảng trắng
             string normalized = rawText.ToLower().Replace(" ", "");
+            if (string.IsNullOrEmpty(normalized)) return string.Empty;
 
-            // CẢI TIẾN 1: Đổi từ Bi-gram (n=2) sang Tri-gram (n=3)
-            // Nếu chuỗi ngắn hơn 3 ký tự (ví dụ: tên "An" -> "an"), giữ nguyên chuỗi
+            int n = FUZZY_NGRAM_SIZE;
             var nGrams = new HashSet<string>();
-            if (normalized.Length < 3)
+            if (normalized.Length < n)
             {
                 nGrams.Add(normalized);
             }
             else
             {
-                for (int i = 0; i < normalized.Length - 2; i++)
+                for (int i = 0; i <= normalized.Length - n; i++)
                 {
-                    nGrams.Add(normalized.Substring(i, 3));
+                    nGrams.Add(normalized.Substring(i, n));
                 }
             }
 
-            // CẢI TIẾN 2: Tăng số lượng hàm băm MinHash từ 16 lên 5 (seeds mới)
-            // Sử dụng XOR thay vì công thức tuyến tính để giảm collision
-            int[] seeds = { 13, 27, 31, 47, 59 };
-            var minHashes = new int[seeds.Length];
+            if (nGrams.Count == 0) return string.Empty;
 
-            for (int i = 0; i < seeds.Length; i++)
+            var minHashes = new int[FUZZY_HASH_SEEDS.Length];
+            for (int i = 0; i < FUZZY_HASH_SEEDS.Length; i++)
             {
                 int minHash = int.MaxValue;
-
                 foreach (var gram in nGrams)
                 {
-                    int hash = HRM.Common.SecurityIndexHelper.GetDeterministicHashCode(gram) ^ seeds[i];
-
-                    if (hash < minHash)
-                    {
-                        minHash = hash;
-                    }
+                    int hash = GetSeededHash(gram, FUZZY_HASH_SEEDS[i]);
+                    if (hash < minHash) minHash = hash;
                 }
-
                 minHashes[i] = minHash;
             }
 
@@ -191,10 +181,16 @@ namespace HRM.Security
 
         #region Private Helpers
 
-        private static bool IsBase64String(string s)
+        private static byte[] ReadExactly32ByteKey(string keyValue, string configurationName)
         {
-            if (string.IsNullOrWhiteSpace(s) || s.Length % 4 != 0) return false;
-            return Convert.TryFromBase64String(s, new Span<byte>(new byte[s.Length]), out _);
+            byte[] keyBytes = Encoding.UTF8.GetBytes(keyValue);
+            if (keyBytes.Length != 32)
+            {
+                throw new InvalidOperationException(
+                    $"{configurationName} phải có đúng 32 byte UTF-8 cho AES-256/HMAC-SHA256.");
+            }
+
+            return keyBytes;
         }
 
         #endregion
