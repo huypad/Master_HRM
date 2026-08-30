@@ -143,7 +143,7 @@ import { NotificationService } from '../../services/notification.service';
 
         <!-- Kết quả khớp Matches -->
         <div class="col-md-2 col-sm-4">
-          <div class="card border-0 shadow-sm rounded-3 bg-secondary text-white h-100">
+          <div class="card border-0 shadow-sm rounded-3 text-white h-100" style="background-color: #FF70A6;">
             <div class="card-body p-3 text-center">
               <small class="text-white-50 text-uppercase fw-bold fs-8">Kết quả khớp</small>
               <h3 class="fw-bold my-1">{{ searchDebug.resultCount ?? items.length }}</h3>
