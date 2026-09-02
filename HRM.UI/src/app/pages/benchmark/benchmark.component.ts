@@ -49,7 +49,7 @@ export type ChartOptions = {
           <form (ngSubmit)="onCompare()" class="row g-3 align-items-end">
             <!-- Input Từ khóa -->
             <div class="col-md-6">
-              <label class="form-label fw-semibold text-secondary fs-7">Từ khóa tra cứu (Keyword)</label>
+              <label class="form-label fw-semibold text-secondary fs-7">Từ khóa tra cứu </label>
               <div class="input-group">
                 <span class="input-group-text bg-light border-end-0">🔍</span>
                 <input
@@ -64,12 +64,12 @@ export type ChartOptions = {
 
             <!-- Select Trường tra cứu -->
             <div class="col-md-4">
-              <label class="form-label fw-semibold text-secondary fs-7">Trường tra cứu (Field)</label>
+              <label class="form-label fw-semibold text-secondary fs-7">Trường tra cứu </label>
               <select class="form-select" [(ngModel)]="field" name="field">
-                <option value="Name">Họ tên (Name)</option>
+                <option value="Name">Họ tên </option>
                 <option value="CCCD">Số CCCD / CMND</option>
-                <option value="Phone">Số Điện thoại (Phone)</option>
-                <option value="Bank">Số Tài khoản (Bank)</option>
+                <option value="Phone">Số Điện thoại</option>
+                <option value="Bank">Số Tài khoản </option>
               </select>
             </div>
 
@@ -252,7 +252,7 @@ export class BenchmarkComponent implements OnInit {
   onCompare(): void {
     const trimmed = this.keyword.trim();
     if (!trimmed) {
-      this.notificationService.showError('Vui lòng nhập từ khóa tìm kiếm (keyword).');
+      this.notificationService.showError('Vui lòng nhập từ khóa tìm kiếm.');
       return;
     }
 

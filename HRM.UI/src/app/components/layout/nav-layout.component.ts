@@ -1,6 +1,6 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterModule } from '@angular/router';
+import { RouterModule, Router } from '@angular/router';
 import { LoadingSpinnerComponent } from '../HRM/_shared/loading/loading-spinner.component';
 
 @Component({
@@ -12,8 +12,8 @@ import { LoadingSpinnerComponent } from '../HRM/_shared/loading/loading-spinner.
     <header class="navbar-header shadow-sm bg-white border-bottom sticky-top">
       <div class="container-fluid d-flex align-items-center justify-content-between py-2 px-4">
         
-        <!-- Brand Title & Logo -->
-        <div class="d-flex align-items-center">
+        <!-- Brand Title & Logo (Click để chuyển/tải lại trang /search) -->
+        <div (click)="onBrandClick()" class="d-flex align-items-center text-decoration-none" style="cursor: pointer;" title="Quay về trang Tra cứu">
           <div class="brand-badge me-3 bg-primary text-white rounded-3 d-flex align-items-center justify-content-center fw-bold shadow-sm" style="width: 40px; height: 40px; font-size: 1.2rem;">
             🏥
           </div>
@@ -67,6 +67,14 @@ import { LoadingSpinnerComponent } from '../HRM/_shared/loading/loading-spinner.
       z-index: 1030;
     }
 
+    .brand-badge {
+      transition: transform 0.2s ease-in-out;
+    }
+
+    .brand-badge:hover {
+      transform: scale(1.05);
+    }
+
     .nav-link {
       color: #495057;
       background-color: transparent;
@@ -91,4 +99,15 @@ import { LoadingSpinnerComponent } from '../HRM/_shared/loading/loading-spinner.
     }
   `]
 })
-export class NavLayoutComponent {}
+export class NavLayoutComponent {
+  constructor(private router: Router) {}
+
+  // Chuyển hướng hoặc tải lại trang /search khi bấm vào biểu tượng logo
+  onBrandClick(): void {
+    if (this.router.url === '/search' || this.router.url === '/') {
+      window.location.href = '/search';
+    } else {
+      this.router.navigate(['/search']);
+    }
+  }
+}

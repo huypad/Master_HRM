@@ -27,7 +27,7 @@ import { NotificationService } from '../../services/notification.service';
           <form (ngSubmit)="onSearch()" class="row g-3 align-items-end">
             <!-- Input Từ khóa -->
             <div class="col-md-5">
-              <label class="form-label fw-semibold text-secondary fs-7">Từ khóa tìm kiếm (Keyword)</label>
+              <label class="form-label fw-semibold text-secondary fs-7">Từ khóa tìm kiếm </label>
               <div class="input-group">
                 <span class="input-group-text bg-light border-end-0">🔍</span>
                 <input
@@ -42,13 +42,13 @@ import { NotificationService } from '../../services/notification.service';
 
             <!-- Dropdown Trường tra cứu -->
             <div class="col-md-3">
-              <label class="form-label fw-semibold text-secondary fs-7">Trường tra cứu (Field)</label>
+              <label class="form-label fw-semibold text-secondary fs-7">Trường tra cứu  </label>
               <select class="form-select" [(ngModel)]="field" name="field">
-                <option value="Name">Họ tên (Name)</option>
+                <option value="Name">Họ tên</option>
                 <option value="ID">Mã Bệnh nhân (ID)</option>
                 <option value="CCCD">Số CCCD / CMND</option>
-                <option value="Phone">Số Điện thoại (Phone)</option>
-                <option value="Bank">Số Tài khoản (Bank)</option>
+                <option value="Phone">Số Điện thoại</option>
+                <option value="Bank">Số Tài khoản</option>
               </select>
             </div>
 
@@ -272,7 +272,7 @@ export class SearchComponent implements OnInit {
   field: string = 'Name';
   pipeline: string = 'V2';
 
-  // Danh sách toàn bộ kết quả trả về từ API (ví dụ: 900 bệnh nhân từ V2)
+  // Danh sách toàn bộ kết quả trả về từ API
   items: Patient[] = [];
   totalResults: number = 0;
   searchDebug: SearchDebugInfo | null = null;
@@ -281,7 +281,7 @@ export class SearchComponent implements OnInit {
   isLoading: boolean = false;
   v1TimeoutError: string | null = null;
 
-  // Biến quản lý phân trang (Pagination)
+  // Biến quản lý phân trang
   page: number = 1;
   pageSize: number = 10;
 
@@ -291,7 +291,7 @@ export class SearchComponent implements OnInit {
   ) { }
 
   ngOnInit(): void {
-    // Tải danh sách 10 bệnh nhân ban đầu từ CSDL
+    // Tải danh sách các bệnh nhân ban đầu từ CSDL
     this.loadInitialPatients();
   }
 
@@ -311,7 +311,7 @@ export class SearchComponent implements OnInit {
     return Math.ceil(this.items.length / this.pageSize) || 1;
   }
 
-  // Lấy dữ liệu cho trang hiện tại (chỉ render đúng số dòng của trang, chống giật lag khi có 900 bản ghi)
+  // Lấy dữ liệu cho trang hiện tại 
   get pagedItems(): Patient[] {
     const start = (this.page - 1) * this.pageSize;
     return this.items.slice(start, start + this.pageSize);
@@ -339,7 +339,7 @@ export class SearchComponent implements OnInit {
     this.page = 1;
   }
 
-  // Tạo danh sách số trang hiển thị thông minh (có dấu ...)
+  // Tạo danh sách số trang hiển thị thông minh 
   getVisiblePages(): number[] {
     const total = this.totalPages;
     const current = this.page;
@@ -385,7 +385,7 @@ export class SearchComponent implements OnInit {
   onSearch(): void {
     const trimmed = this.keyword.trim();
     if (!trimmed) {
-      this.notificationService.showError('Vui lòng nhập từ khóa tìm kiếm (keyword).');
+      this.notificationService.showError('Vui lòng nhập từ khóa tìm kiếm.');
       return;
     }
 
@@ -397,7 +397,7 @@ export class SearchComponent implements OnInit {
     this.patientService
       .searchBenchmark(trimmed, this.field, this.pipeline)
       .pipe(
-        // Giới hạn thời gian phản hồi là 15 giây (15000ms) theo yêu cầu Nhiệm vụ 1
+        // Giới hạn thời gian phản hồi là 15 giây 
         timeout({
           each: 15000,
           with: () => throwError(() => new Error('TIMEOUT_15S'))
