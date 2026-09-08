@@ -34,7 +34,6 @@ namespace HRM.Services
         #region V2 PIPELINE (HMAC + BITGRAM / LSH BUCKET)
 
 
-        // Tra cứu chính xác (HMAC-SHA256) theo CCCD, Phone, hoặc BankAccount.
 
         public async Task<PagedResult<PatientDto>> SearchExactAsync(string keyword, string field)
         {
@@ -115,27 +114,6 @@ namespace HRM.Services
                         BankAccount = _securityService.DecryptData(row.I_BankAccount).Replace("\0", "").Trim()
                     });
                 }
-                else
-                {
-                    decryptedTarget = (field?.ToUpperInvariant()) switch
-                    {
-                        "PHONE" => _securityService.DecryptData(row.I_Phone),
-                        "BANK" => _securityService.DecryptData(row.I_BankAccount),
-                        _ => _securityService.DecryptData(row.I_CCCD)
-                    };
-
-                    if (decryptedTarget.Equals(cleanKw, StringComparison.OrdinalIgnoreCase))
-                    {
-                        results.Add(new PatientDto
-                        {
-                            PatientID = row.PatientID,
-                            Name = _securityService.DecryptData(row.I_Name),
-                            CCCD = _securityService.DecryptData(row.I_CCCD),
-                            Phone = _securityService.DecryptData(row.I_Phone),
-                            BankAccount = _securityService.DecryptData(row.I_BankAccount)
-                        });
-                    }
-                }
             }
             swStep2.Stop();
 
@@ -175,6 +153,15 @@ namespace HRM.Services
 
             string cleanKw = keyword.Trim();
             string normalizedKw = SecurityIndexHelper.NormalizeForSearch(cleanKw).Replace("\0", "").Trim();
+
+            
+            if (cleanKw.Length <= HRM.Security.RealSecurityService.FUZZY_NGRAM_SIZE)
+            {
+                var fallback = await SearchFuzzyBaselineAsync(cleanKw);
+                if (fallback.SearchDebug != null)
+                    fallback.SearchDebug.SearchType = "Fuzzy_V2_Fallback_FullScan";
+                return fallback;
+            }
 
             string fuzzyStr = _securityService.GenerateFuzzyIndex(cleanKw);
             int[] searchBuckets = ParseMinHashBuckets(fuzzyStr);
