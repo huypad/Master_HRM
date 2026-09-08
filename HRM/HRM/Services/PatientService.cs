@@ -15,7 +15,7 @@ namespace HRM.Services
 {
 
 
-    /// Tự động đồng bộ AES-256, HMAC exact index và MinHash LSH bucket index.
+   
 
     public class PatientService : IPatientService
     {
@@ -42,14 +42,14 @@ namespace HRM.Services
             {
                 await conn.OpenAsync();
 
-                // 1. Dem tong so phan tu
+             
                 string countSql = "SELECT COUNT(*) FROM dbo.Patient;";
                 using (var countCmd = new SqlCommand(countSql, conn))
                 {
                     total = Convert.ToInt32(await countCmd.ExecuteScalarAsync());
                 }
 
-                // 2. Lay du lieu phan trang
+              
                 string pageSql = @"
                     SELECT PatientID, FullName, CCCD, Phone, BankAccount, Age, Gender, BloodType, Email
                     FROM dbo.Patient
@@ -133,7 +133,7 @@ namespace HRM.Services
                 string phoneStr = model.Phone ?? string.Empty;
                 string bankStr = model.BankAccount ?? string.Empty;
 
-                // 1. Insert vao bang Patient (Plaintext)
+              
                 string insertPatientSql = @"
                     INSERT INTO dbo.Patient (FullName, CCCD, Phone, BankAccount, Age, Gender, BloodType, Email)
                     VALUES (@FullName, @CCCD, @Phone, @BankAccount, @Age, @Gender, @BloodType, @Email);
@@ -154,7 +154,7 @@ namespace HRM.Services
                     newId = Convert.ToInt32(await cmd.ExecuteScalarAsync());
                 }
 
-                // 2. Ma hoa AES va sinh HMAC
+               
                 string encNameBase64 = _securityService.EncryptData(nameStr);
                 string encCCCDBase64 = _securityService.EncryptData(cccdStr);
                 string encPhoneBase64 = _securityService.EncryptData(phoneStr);
@@ -189,8 +189,7 @@ namespace HRM.Services
                     await cmd.ExecuteNonQueryAsync();
                 }
 
-                // 3. Sinh BitGram / LSH Bucket Index va Insert vao BitGramIndex_Patient
-                // Lưu một bucket MinHash cho mỗi seed của cấu hình hiện hành.
+             
                 string fuzzyBucketStr = _securityService.GenerateFuzzyIndex(nameStr);
                 if (!string.IsNullOrEmpty(fuzzyBucketStr))
                 {
@@ -245,7 +244,7 @@ namespace HRM.Services
                 string phoneStr = model.Phone ?? string.Empty;
                 string bankStr = model.BankAccount ?? string.Empty;
 
-                // 1. Cap nhat Patient (Plaintext)
+                
                 string updatePatientSql = @"
                     UPDATE dbo.Patient
                     SET FullName = @FullName, CCCD = @CCCD, Phone = @Phone, BankAccount = @BankAccount,
@@ -274,7 +273,7 @@ namespace HRM.Services
                     return false;
                 }
 
-                // 2. Re-encrypt & Re-index Patient_Secure
+              
                 string encNameBase64 = _securityService.EncryptData(nameStr);
                 string encCCCDBase64 = _securityService.EncryptData(cccdStr);
                 string encPhoneBase64 = _securityService.EncryptData(phoneStr);
@@ -309,7 +308,6 @@ namespace HRM.Services
                     await cmd.ExecuteNonQueryAsync();
                 }
 
-                // 3. Rebuild BitGram Index
                 string delBitGramSql = "DELETE FROM dbo.BitGramIndex_Patient WHERE PatientID = @Id;";
                 using (var cmd = new SqlCommand(delBitGramSql, conn, tx))
                 {
@@ -317,7 +315,7 @@ namespace HRM.Services
                     await cmd.ExecuteNonQueryAsync();
                 }
 
-                // 3. Rebuild MinHash LSH index theo cấu hình hiện hành.
+             
                 string fuzzyBucketStr = _securityService.GenerateFuzzyIndex(nameStr);
                 if (!string.IsNullOrEmpty(fuzzyBucketStr))
                 {
@@ -355,7 +353,7 @@ namespace HRM.Services
 
             try
             {
-                // 1. Delete BitGramIndex_Patient
+               
                 string delBitGram = "DELETE FROM dbo.BitGramIndex_Patient WHERE PatientID = @Id;";
                 using (var cmd = new SqlCommand(delBitGram, conn, tx))
                 {
@@ -363,7 +361,7 @@ namespace HRM.Services
                     await cmd.ExecuteNonQueryAsync();
                 }
 
-                // 2. Delete Patient_Secure
+              
                 string delSecure = "DELETE FROM dbo.Patient_Secure WHERE PatientID = @Id;";
                 using (var cmd = new SqlCommand(delSecure, conn, tx))
                 {
@@ -371,7 +369,7 @@ namespace HRM.Services
                     await cmd.ExecuteNonQueryAsync();
                 }
 
-                // 3. Delete Patient
+              
                 string delPatient = "DELETE FROM dbo.Patient WHERE PatientID = @Id;";
                 int rows;
                 using (var cmd = new SqlCommand(delPatient, conn, tx))
@@ -390,9 +388,8 @@ namespace HRM.Services
             }
         }
 
-        /// <summary>
-        /// Parse chuỗi bucket MinHash để lưu từng bucket vào BitGramIndex_Patient.
-        /// </summary>
+      
+      
         private static int[] ParseMinHashBuckets(string fuzzyBucketStr)
         {
             const string prefix = "BKT_V2_";
@@ -402,7 +399,7 @@ namespace HRM.Services
             string rest = fuzzyBucketStr.Substring(prefix.Length);
             if (string.IsNullOrEmpty(rest)) return Array.Empty<int>();
 
-            // Số âm có dạng "-123456", không chứa "_", nên Split("_") vẫn đúng
+         
             var parts = rest.Split(new char[] { '_' }, StringSplitOptions.RemoveEmptyEntries);
             var result = new List<int>();
             foreach (var part in parts)

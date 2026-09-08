@@ -17,12 +17,7 @@ namespace HRM.Controllers
         }
 
         
-        /// Endpoint tra cứu dữ liệu Bệnh nhân trên HealthcareDB theo Pipeline chỉ định (V1 hoặc V2).
-        /// Trả về PagedResult<PatientDto> chứa chỉ số đo đạc SearchDebugInfo.
-       
-        /// <param name="keyword">Từ khóa tra cứu.</param>
-        /// <param name="field">Cột cần tra: "Name", "CCCD", "Phone", hoặc "Bank". Mặc định "Name".</param>
-        /// <param name="pipeline">Phiên bản pipeline: "V1" (SHA256 Baseline) hoặc "V2" (HMAC + BitGram). Mặc định "V2".</param>
+        
         [HttpGet("search")]
         public async Task<IActionResult> Search(
             [FromQuery] string keyword,
@@ -56,11 +51,7 @@ namespace HRM.Controllers
         }
 
         
-        /// Endpoint chạy song song V1 Baseline và V2 HMAC/BitGram trên cùng từ khóa để so sánh hiệu năng.
-        /// Trả về Anonymous Object JSON kết hợp số liệu so sánh trực tiếp.
-    
-        /// <param name="keyword">Từ khóa tra cứu.</param>
-        /// <param name="field">Cột cần tra: "Name", "CCCD", "Phone", hoặc "Bank". Mặc định "Name".</param>
+      
         [HttpGet("compare")]
         public async Task<IActionResult> Compare(
             [FromQuery] string keyword,

@@ -1,7 +1,7 @@
 namespace HRM.Model.Healthcare
 {
    
-    /// Model nhận dữ liệu đầu vào khi Thêm mới hoặc Cập nhật Bệnh nhân trên HealthcareDB.
+
    
     public class CreatePatientModel
     {

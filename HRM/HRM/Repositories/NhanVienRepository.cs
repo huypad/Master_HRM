@@ -181,7 +181,7 @@ namespace HRM.Repositories
             var isCmndSearch = IsCmndKeyword(keyword);
             var searchType = isCmndSearch ? "CMND/CCCD" : "Họ tên";
 
-            // STEP 1: lọc ứng viên bằng hash/index trong SQL.
+           
             var step1Sw = Stopwatch.StartNew();
             var candidateIds = isCmndSearch
                 ? await FindIdsByCMNDHashAsync(keyword)
@@ -190,7 +190,7 @@ namespace HRM.Repositories
 
             var candidateCount = candidateIds.Distinct().Count();
 
-            // STEP 2: lấy tập ứng viên, decrypt trên RAM, so sánh lại với keyword thật.
+           
             var step2Sw = Stopwatch.StartNew();
 
             var candidateItems = candidateIds.Any()
@@ -201,8 +201,7 @@ namespace HRM.Repositories
                 .Where(x => MatchesSearchKeyword(x, keyword))
                 .ToList();
 
-            // Fallback để demo không bị rỗng nếu SecureIndex/CMNDHash trong DB đang cũ hoặc chưa rebuild.
-            // Đây vẫn là backend decrypt + so sánh lại dữ liệu thật; chỉ chạy khi bước index không đủ kết quả.
+           
             if (!matchedItems.Any())
             {
                 var fallbackItems = await GetAllPrivateAsync();
@@ -282,7 +281,7 @@ namespace HRM.Repositories
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Decrypt lỗi tại Id_NV = {id}. Lỗi: {ex.Message}");
+               
                 return null;
             }
         }
@@ -787,7 +786,7 @@ namespace HRM.Repositories
 
                     transaction.Commit();
 
-                    Console.WriteLine($"Batch {batchNo}/{batches.Count} done. Records: {batch.Count}, SecureIndex rows: {table.Rows.Count}");
+                    
                 }
                 catch
                 {
@@ -1046,7 +1045,7 @@ namespace HRM.Repositories
             if (string.IsNullOrWhiteSpace(normalized))
                 return terms;
 
-            // Luôn thêm cụm từ đầy đủ để tìm kiếm
+            
             terms.Add(normalized);
 
             var words = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);

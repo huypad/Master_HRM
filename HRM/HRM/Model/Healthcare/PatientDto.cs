@@ -1,8 +1,6 @@
 namespace HRM.Model.Healthcare
 {
    
-    /// DTO đại diện cho dữ liệu Bệnh nhân từ HealthcareDB sau khi đã được giải mã AES-256.
-    /// Dùng làm kiểu dữ liệu T cho PagedResult<T>.
     
     public class PatientDto
     {

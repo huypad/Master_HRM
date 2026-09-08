@@ -7,8 +7,6 @@ using System.Text;
 namespace HRM.Security
 {
    
-    /// Triển khai dịch vụ bảo mật lai (Hybrid Security) cho HealthcareDB1.
-    /// - Chỉ mục tra cứu mờ: MinHash LSH với cấu hình n-gram và seed hiện hành.
 
     public class RealSecurityService : IHybridSecurityService
     {
@@ -38,9 +36,7 @@ namespace HRM.Security
         #region IHybridSecurityService Implementation
 
 
-        /// Mã hóa dữ liệu bằng AES-256 (IV 16 byte ngẫu nhiên được nối vào đầu cipher).
-        /// Output: Chuỗi Base64 đại diện cho [IV (16B) + CipherText (NB)].
-
+       
         public string EncryptData(string plainText)
         {
             if (string.IsNullOrEmpty(plainText)) return string.Empty;
@@ -55,7 +51,7 @@ namespace HRM.Security
             byte[] plainBytes = Encoding.UTF8.GetBytes(plainText);
             byte[] cipherBytes = encryptor.TransformFinalBlock(plainBytes, 0, plainBytes.Length);
 
-            // Nối IV (16 bytes) + CipherBytes
+           
             byte[] result = new byte[aes.IV.Length + cipherBytes.Length];
             Buffer.BlockCopy(aes.IV, 0, result, 0, aes.IV.Length);
             Buffer.BlockCopy(cipherBytes, 0, result, aes.IV.Length, cipherBytes.Length);
@@ -64,7 +60,7 @@ namespace HRM.Security
         }
 
 
-        /// Giải mã dữ liệu AES-256 từ chuỗi Base64 chứa [IV (16B) + CipherText (NB)].
+       
 
         private readonly System.Threading.ThreadLocal<Aes> _aesLocal;
 

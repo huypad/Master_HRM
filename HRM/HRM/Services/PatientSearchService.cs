@@ -17,7 +17,7 @@ using HRM.Security;
 namespace HRM.Services
 {
 
-    /// Triển khai dịch vụ tra cứu 2 bước (2-Step Search) trên HealthcareDB1.
+   
 
     public class PatientSearchService : IPatientSearchService
     {
@@ -34,7 +34,7 @@ namespace HRM.Services
         #region V2 PIPELINE (HMAC + BITGRAM / LSH BUCKET)
 
 
-        /// Tra cứu chính xác V2 (HMAC-SHA256) theo CCCD, Phone, hoặc BankAccount.
+        // Tra cứu chính xác (HMAC-SHA256) theo CCCD, Phone, hoặc BankAccount.
 
         public async Task<PagedResult<PatientDto>> SearchExactAsync(string keyword, string field)
         {
@@ -53,10 +53,10 @@ namespace HRM.Services
             }
 
             string cleanKw = keyword.Trim();
-            // 1. Generate HMAC exact index.
+            
             string hmacIndex = _securityService.GenerateExactIndex(cleanKw);
 
-            // Xác định cột HMAC cần query
+           
             string hmacColumn = (field?.ToUpperInvariant()) switch
             {
                 "PHONE" => "Phone_HMAC",
@@ -64,7 +64,7 @@ namespace HRM.Services
                 _ => "CCCD_HMAC"
             };
 
-            // 2. Step 1: SQL Index Query (Fetch Candidates bang Index Seek)
+            
             var candidates = new List<EncryptedPatientRow>();
             var swStep1 = Stopwatch.StartNew();
 
@@ -73,10 +73,11 @@ namespace HRM.Services
                 await conn.OpenAsync();
                 string sql = $@"
                     SELECT PatientID, EncryptName, EncryptCCCD, EncryptPhone, EncryptBankAccount
-                    FROM dbo.Patient_Secure
+                    FROM dbo.Patient_Secure WITH(NOLOCK)
                     WHERE {hmacColumn} = @HmacValue;";
 
                 using var cmd = new SqlCommand(sql, conn);
+                cmd.CommandTimeout = 120;
                 cmd.Parameters.AddWithValue("@HmacValue", hmacIndex);
 
                 using var reader = await cmd.ExecuteReaderAsync();
@@ -90,7 +91,7 @@ namespace HRM.Services
             debug.Step1Ms = swStep1.ElapsedMilliseconds;
             debug.CandidateCount = candidates.Count;
 
-            // 3. Step 2: RAM AES Decrypt & Filter
+            
             var results = new List<PatientDto>();
             var swStep2 = Stopwatch.StartNew();
 
@@ -153,8 +154,6 @@ namespace HRM.Services
                 SearchDebug = debug
             };
         }
-
-        /// Tra cứu gần đúng V2 (Trigram Containment Index) theo Họ Tên.
 
         public async Task<PagedResult<PatientDto>> SearchFuzzyAsync(string keyword)
         {
@@ -295,7 +294,7 @@ namespace HRM.Services
             string rest = fuzzyBucketStr.Substring(prefix.Length);
             if (string.IsNullOrEmpty(rest)) return Array.Empty<int>();
 
-            // Số âm có dạng "-123456", không chứa "_", nên Split("_") vẫn đúng
+           
             var parts = rest.Split(new char[] { '_' }, StringSplitOptions.RemoveEmptyEntries);
             var result = new List<int>();
             foreach (var part in parts)
@@ -310,9 +309,6 @@ namespace HRM.Services
 
         #region V1 BASELINE PIPELINE (UNINDEXED FULL SCAN & RAM AES DECRYPT)
 
-
-        /// Tra cứu chính xác V1 Baseline (Mô phỏng hệ thống cũ chưa có chỉ mục băm).
-        /// Kéo toàn bộ bảng Patient_Secure lên RAM -> Đếm CandidateCount thực tế -> Giải mã AES-256 từng dòng -> .Equals().
 
         public async Task<PagedResult<PatientDto>> SearchExactBaselineAsync(string keyword, string field)
         {
@@ -332,7 +328,7 @@ namespace HRM.Services
 
             string cleanKw = keyword.Trim();
 
-            // Xác định cột ciphertext cần kéo, tương ứng field đang tìm
+           
             string targetColumn = (field?.ToUpperInvariant()) switch
             {
                 "PHONE" => "EncryptPhone",
@@ -340,9 +336,6 @@ namespace HRM.Services
                 _ => "EncryptCCCD"
             };
 
-            // Step 1: Full Table Scan từ SQL — CHỈ kéo PatientID + đúng 1 cột đang tìm
-            // (giống pattern của SearchFuzzyBaselineAsync), KHÔNG kéo cả 4 cột như trước.
-            // Giảm I/O ~4 lần cho 300.000 dòng — đây là nguyên nhân chính gây timeout/treo.
             var targetRows = new List<(int PatientID, string EncryptedTarget)>();
             var swStep1 = Stopwatch.StartNew();
 
@@ -351,10 +344,10 @@ namespace HRM.Services
                 await conn.OpenAsync();
                 string sql = $@"
                     SELECT PatientID, {targetColumn}
-                    FROM dbo.Patient_Secure;";
+                    FROM dbo.Patient_Secure WITH(NOLOCK);";
 
                 using var cmd = new SqlCommand(sql, conn);
-                cmd.CommandTimeout = 300; // Đồng bộ với luồng Fuzzy Baseline, tránh timeout 30s mặc định
+                cmd.CommandTimeout = 300; 
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
@@ -366,9 +359,9 @@ namespace HRM.Services
             }
             swStep1.Stop();
             debug.Step1Ms = swStep1.ElapsedMilliseconds;
-            debug.CandidateCount = targetRows.Count; // CandidateCount thực tế đọc được từ SQL
+            debug.CandidateCount = targetRows.Count; 
 
-            // Step 2: Giải mã AES-256 CHỈ field đang tìm (không phải cả 4 field) trên RAM và so sánh Equals
+           
             var matchedIds = new List<int>();
             var swStep2 = Stopwatch.StartNew();
 
@@ -388,7 +381,7 @@ namespace HRM.Services
             debug.ResultCount = matchedIds.Count;
             debug.CollisionCount = debug.CandidateCount - debug.ResultCount;
 
-            // Fetch đầy đủ thông tin (cả 4 cột) chỉ cho số ít kết quả khớp — không phải cho 300k dòng
+            
             var results = new List<PatientDto>();
             if (matchedIds.Count > 0)
             {
@@ -417,9 +410,6 @@ namespace HRM.Services
         }
 
 
-        /// Tra cứu gần đúng V1 Baseline (Mô phỏng hệ thống cũ chưa có chỉ mục băm).
-        /// Kéo toàn bộ bảng Patient_Secure lên RAM -> Đếm CandidateCount thực tế -> Giải mã AES-256 từng dòng -> .Contains().
-
         public async Task<PagedResult<PatientDto>> SearchFuzzyBaselineAsync(string keyword)
         {
             var swTotal = Stopwatch.StartNew();
@@ -439,7 +429,6 @@ namespace HRM.Services
             string cleanKw = keyword.Trim();
             string normalizedKw = SecurityIndexHelper.NormalizeForSearch(cleanKw).Replace("\0", "").Trim();
 
-            // Step 1: Full Table Scan từ SQL — chỉ kéo PatientID + EncryptName (tối thiểu cần thiết để lọc)
             var nameRows = new List<(int PatientID, string EncryptName)>();
             var swStep1 = Stopwatch.StartNew();
 
@@ -448,7 +437,7 @@ namespace HRM.Services
                 await conn.OpenAsync();
                 string sql = @"
                     SELECT PatientID, EncryptName
-                    FROM dbo.Patient_Secure;";
+                    FROM dbo.Patient_Secure WITH(NOLOCK);";
 
                 using var cmd = new SqlCommand(sql, conn);
                 cmd.CommandTimeout = 300;
@@ -463,9 +452,8 @@ namespace HRM.Services
             }
             swStep1.Stop();
             debug.Step1Ms = swStep1.ElapsedMilliseconds;
-            debug.CandidateCount = nameRows.Count; // Thực tế là 300.000 bản ghi
+            debug.CandidateCount = nameRows.Count; 
 
-            // Step 2: Giải mã từng tên trên RAM và lọc mờ — đây là bước tốn thời gian nhất
             var matchedIds = new List<int>();
             var swStep2 = Stopwatch.StartNew();
 
@@ -489,7 +477,7 @@ namespace HRM.Services
             debug.ResultCount = matchedIds.Count;
             debug.CollisionCount = debug.CandidateCount - debug.ResultCount;
 
-            // Fetch đầy đủ thông tin chỉ cho số ít kết quả khớp
+            
             var results = new List<PatientDto>();
             if (matchedIds.Count > 0)
             {
@@ -554,7 +542,7 @@ namespace HRM.Services
                 var sqlBuilder = new StringBuilder();
                 sqlBuilder.Append(@"
                     SELECT PatientID, EncryptName, EncryptCCCD, EncryptPhone, EncryptBankAccount
-                    FROM dbo.Patient_Secure
+                    FROM dbo.Patient_Secure WITH(NOLOCK)
                     WHERE PatientID IN (");
 
                 for (int i = 0; i < batch.Count; i++)

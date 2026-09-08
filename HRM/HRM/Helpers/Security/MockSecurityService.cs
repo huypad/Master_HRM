@@ -3,11 +3,6 @@ using System.Text;
 
 namespace HRM.Helpers.Security
 {
-    /// <summary>
-    /// Mock black-box security service dùng để nối backend với database hiện tại.
-    /// EncryptData trả Base64 của IV + CipherText, repository sẽ convert sang varbinary khi lưu DB.
-    /// GenerateSearchIndex trả Base64 của SHA-256 để repository convert sang varbinary(32).
-    /// </summary>
     public class MockSecurityService : ISecurityService
     {
         private const string Salt = "AppFixedSalt_2026";
@@ -17,9 +12,6 @@ namespace HRM.Helpers.Security
         {
             rawData ??= string.Empty;
 
-            // Giữ tương thích với dữ liệu SecureIndex/CMNDHash hiện có:
-            // - CMNDHash cũ: SHA256(Salt + value.Trim().ToLowerInvariant())
-            // - GramHash cũ: SHA256(Salt + gram), gram đã được normalize trước khi truyền vào.
             var normalized = columnProfile.Equals("HoTenGram", StringComparison.OrdinalIgnoreCase)
                 ? rawData
                 : rawData.Trim().ToLowerInvariant();
@@ -79,7 +71,7 @@ namespace HRM.Helpers.Security
             }
             catch
             {
-                // Nếu dữ liệu cũ chưa mã hóa hoặc DB đang lưu chuỗi thường, trả lại chính nó để không làm chết search.
+               
                 return encryptedData;
             }
         }

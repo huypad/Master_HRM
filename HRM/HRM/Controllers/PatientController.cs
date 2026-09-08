@@ -18,8 +18,7 @@ namespace HRM.Controllers
         }
 
        
-        /// Lấy danh sách bệnh nhân phân trang trên HealthcareDB.
-        /// Sử dụng bởi Màn hình 1 (khi load trang) và Màn hình 2 (Quản lý bệnh nhân).
+
       
         [HttpGet]
         public async Task<IActionResult> GetPaged([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
@@ -44,7 +43,7 @@ namespace HRM.Controllers
 
      
         /// Thêm mới bệnh nhân.
-        /// Tự động mã hóa AES-256, tạo HMAC Exact Index và tạo BitGram Bucket Index.
+       
 
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] CreatePatientModel model)
@@ -59,7 +58,7 @@ namespace HRM.Controllers
         }
 
         /// Cập nhật thông tin bệnh nhân theo ID.
-        /// Tự động mã hóa lại và Rebuild toàn bộ chỉ mục HMAC/BitGram.
+      
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(int id, [FromBody] CreatePatientModel model)
         {
@@ -78,7 +77,7 @@ namespace HRM.Controllers
         }
 
         /// Xóa bệnh nhân theo ID.
-        /// Tự động xóa sạch ở 3 bảng: Patient, Patient_Secure và BitGramIndex_Patient.
+       
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(int id)
         {
